@@ -1,0 +1,436 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <title>Gemini Speech Test</title>
+
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      max-width: 720px;
+      margin: 40px auto;
+      padding: 20px;
+      background: #f5f7fb;
+      color: #1f2937;
+    }
+
+    .card {
+      background: white;
+      border-radius: 16px;
+      padding: 28px;
+      box-shadow: 0 4px 18px rgba(0,0,0,0.08);
+    }
+
+    h1 {
+      margin-top: 0;
+    }
+
+    .sentence {
+      background: #eef4ff;
+      padding: 18px;
+      border-radius: 12px;
+      font-size: 22px;
+      margin: 20px 0;
+    }
+
+    button {
+      font-size: 17px;
+      padding: 12px 18px;
+      margin: 5px;
+      border: none;
+      border-radius: 10px;
+      cursor: pointer;
+    }
+
+    #startBtn {
+      background: #2563eb;
+      color: white;
+    }
+
+    #stopBtn {
+      background: #dc2626;
+      color: white;
+    }
+
+    #sendBtn {
+      background: #059669;
+      color: white;
+    }
+
+    button:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+    }
+
+    .box {
+      margin-top: 22px;
+      padding: 16px;
+      border: 1px solid #d1d5db;
+      border-radius: 10px;
+      min-height: 55px;
+      background: #fafafa;
+    }
+
+    #status {
+      margin-top: 20px;
+      font-weight: bold;
+    }
+
+    #error {
+      color: #b91c1c;
+      margin-top: 15px;
+      white-space: pre-wrap;
+    }
+
+    .privacy {
+      margin-top: 20px;
+      font-size: 14px;
+      color: #6b7280;
+    }
+  </style>
+</head>
+
+<body>
+
+<div class="card">
+
+  <h1>🎤 Gemini Verbatim Test</h1>
+
+  <p>
+    Say the sentence exactly as written:
+  </p>
+
+  <div class="sentence">
+    I want go Japan.
+  </div>
+
+  <button id="startBtn">
+    🎤 START RECORDING
+  </button>
+
+  <button id="stopBtn" disabled>
+    ⏹ STOP
+  </button>
+
+  <button id="sendBtn" disabled>
+    ☁ SEND TO GEMINI
+  </button>
+
+  <div id="status">
+    Status: Ready
+  </div>
+
+  <h3>Gemini transcript</h3>
+
+  <div id="transcript" class="box">
+    No transcript yet.
+  </div>
+
+  <div id="error"></div>
+
+  <div class="privacy">
+    Prototype test: audio is recorded temporarily in the browser
+    and sent to the speech backend for transcription.
+    This page does not intentionally save the recording.
+  </div>
+
+</div>
+
+<script>
+
+const API_URL =
+  "https://speak-test-api.ptmdung.workers.dev/transcribe";
+
+let mediaRecorder = null;
+let audioChunks = [];
+let audioBlob = null;
+let stream = null;
+
+const startBtn =
+  document.getElementById("startBtn");
+
+const stopBtn =
+  document.getElementById("stopBtn");
+
+const sendBtn =
+  document.getElementById("sendBtn");
+
+const statusEl =
+  document.getElementById("status");
+
+const transcriptEl =
+  document.getElementById("transcript");
+
+const errorEl =
+  document.getElementById("error");
+
+
+function setStatus(message) {
+  statusEl.textContent =
+    "Status: " + message;
+}
+
+
+startBtn.addEventListener(
+  "click",
+  async () => {
+
+    errorEl.textContent = "";
+    transcriptEl.textContent =
+      "No transcript yet.";
+
+    audioBlob = null;
+    audioChunks = [];
+
+    try {
+
+      stream =
+        await navigator.mediaDevices
+          .getUserMedia({
+            audio: true
+          });
+
+      let options = {};
+
+      if (
+        MediaRecorder.isTypeSupported(
+          "audio/webm;codecs=opus"
+        )
+      ) {
+        options.mimeType =
+          "audio/webm;codecs=opus";
+
+      } else if (
+        MediaRecorder.isTypeSupported(
+          "audio/webm"
+        )
+      ) {
+        options.mimeType =
+          "audio/webm";
+      }
+
+      mediaRecorder =
+        new MediaRecorder(
+          stream,
+          options
+        );
+
+      mediaRecorder.ondataavailable =
+        (event) => {
+
+          if (
+            event.data &&
+            event.data.size > 0
+          ) {
+            audioChunks.push(
+              event.data
+            );
+          }
+        };
+
+
+      mediaRecorder.onstop = () => {
+
+        const mimeType =
+          mediaRecorder.mimeType ||
+          "audio/webm";
+
+        audioBlob =
+          new Blob(
+            audioChunks,
+            {
+              type: mimeType
+            }
+          );
+
+        if (stream) {
+          stream
+            .getTracks()
+            .forEach(
+              track => track.stop()
+            );
+        }
+
+        setStatus(
+          "Recording ready. Click SEND TO GEMINI."
+        );
+
+        sendBtn.disabled = false;
+        startBtn.disabled = false;
+        stopBtn.disabled = true;
+      };
+
+
+      mediaRecorder.start();
+
+      startBtn.disabled = true;
+      stopBtn.disabled = false;
+      sendBtn.disabled = true;
+
+      setStatus(
+        "Recording... Say: I want go Japan."
+      );
+
+    } catch (error) {
+
+      console.error(error);
+
+      errorEl.textContent =
+        "Microphone error: " +
+        error.message;
+
+      setStatus(
+        "Microphone unavailable"
+      );
+    }
+  }
+);
+
+
+stopBtn.addEventListener(
+  "click",
+  () => {
+
+    if (
+      mediaRecorder &&
+      mediaRecorder.state ===
+        "recording"
+    ) {
+
+      setStatus(
+        "Finishing recording..."
+      );
+
+      mediaRecorder.stop();
+    }
+  }
+);
+
+
+sendBtn.addEventListener(
+  "click",
+  async () => {
+
+    if (
+      !audioBlob ||
+      audioBlob.size === 0
+    ) {
+
+      errorEl.textContent =
+        "No recording available.";
+
+      return;
+    }
+
+    sendBtn.disabled = true;
+    startBtn.disabled = true;
+
+    errorEl.textContent = "";
+
+    transcriptEl.textContent =
+      "Waiting for Gemini...";
+
+    setStatus(
+      "Sending audio to backend..."
+    );
+
+    try {
+
+      const response =
+        await fetch(
+          API_URL,
+          {
+            method: "POST",
+
+            headers: {
+              "Content-Type":
+                audioBlob.type ||
+                "audio/webm"
+            },
+
+            body: audioBlob
+          }
+        );
+
+
+      const rawText =
+        await response.text();
+
+      let data = null;
+
+      try {
+        data =
+          JSON.parse(rawText);
+      } catch {
+        throw new Error(
+          "Backend returned non-JSON data."
+        );
+      }
+
+
+      if (
+        !response.ok ||
+        !data.ok
+      ) {
+
+        const stage =
+          data.stage
+            ? " Stage: " +
+              data.stage + "."
+            : "";
+
+        const status =
+          data.status
+            ? " API status: " +
+              data.status + "."
+            : "";
+
+        throw new Error(
+          (data.error ||
+            "Transcription failed.") +
+          stage +
+          status
+        );
+      }
+
+
+      transcriptEl.textContent =
+        data.transcript;
+
+      setStatus(
+        "Transcription complete"
+      );
+
+
+    } catch (error) {
+
+      console.error(error);
+
+      transcriptEl.textContent =
+        "No transcript.";
+
+      errorEl.textContent =
+        "ERROR: " +
+        error.message;
+
+      setStatus(
+        "Test failed"
+      );
+
+    } finally {
+
+      startBtn.disabled = false;
+
+      if (audioBlob) {
+        sendBtn.disabled = false;
+      }
+    }
+  }
+);
+
+</script>
+
+</body>
+</html>
