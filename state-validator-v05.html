@@ -1,0 +1,1705 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<title>SPEAK State + Semantic Validator V0.5</title>
+
+<style>
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  padding: 35px 15px;
+  background: #f3f6fb;
+  font-family: Arial, Helvetica, sans-serif;
+  color: #10213f;
+}
+
+.container {
+  max-width: 760px;
+  margin: auto;
+  background: white;
+  padding: 28px;
+  border-radius: 18px;
+  box-shadow: 0 8px 25px rgba(0,0,0,0.08);
+}
+
+h1 {
+  margin-top: 0;
+  color: #073b82;
+}
+
+.subtitle {
+  line-height: 1.5;
+  color: #26364f;
+}
+
+.task-card {
+  margin-top: 22px;
+  background: #eaf2ff;
+  padding: 16px;
+  border-radius: 12px;
+}
+
+.task-title {
+  font-size: 18px;
+  font-weight: bold;
+  margin: 8px 0;
+}
+
+.small {
+  font-size: 14px;
+}
+
+label {
+  display: block;
+  font-weight: bold;
+  margin-top: 18px;
+  margin-bottom: 7px;
+}
+
+input {
+  width: 100%;
+  padding: 12px;
+  font-size: 16px;
+  border: 1px solid #b8c5d9;
+  border-radius: 8px;
+}
+
+.buttons {
+  margin-top: 10px;
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+button {
+  border: none;
+  border-radius: 8px;
+  padding: 11px 16px;
+  font-weight: bold;
+  cursor: pointer;
+}
+
+.check {
+  background: #08aa8a;
+  color: white;
+}
+
+.try {
+  background: #6f86a7;
+  color: white;
+}
+
+.advance {
+  background: #2768ed;
+  color: white;
+}
+
+.restart {
+  background: #102f72;
+  color: white;
+}
+
+button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.status {
+  margin-top: 14px;
+  padding: 14px;
+  border-radius: 9px;
+  font-weight: bold;
+  line-height: 1.5;
+}
+
+.waiting {
+  background: #edf1f6;
+}
+
+.pass {
+  background: #d8f5dd;
+}
+
+.support {
+  background: #fff0bd;
+}
+
+.uncertain {
+  background: #ffe2cc;
+}
+
+.panel {
+  margin-top: 12px;
+  padding: 15px;
+  border-radius: 9px;
+  line-height: 1.55;
+}
+
+.state {
+  background: #dff1ff;
+}
+
+.semantic {
+  background: #f0e8ff;
+  border-left: 4px solid #7d4cf1;
+}
+
+.intent {
+  background: #e5f7f3;
+  border-left: 4px solid #08aa8a;
+}
+
+.hint {
+  background: #fff7dc;
+  border-left: 4px solid #e5ad18;
+}
+
+.rules {
+  margin-top: 15px;
+  background: #f5f7fa;
+  padding: 15px;
+  border-radius: 9px;
+}
+
+code {
+  font-family: Consolas, monospace;
+}
+</style>
+</head>
+
+<body>
+
+<div class="container">
+
+<h1>🧠 SPEAK State + Semantic Validator V0.5</h1>
+
+<p class="subtitle">
+This prototype tests whether the learner performs the correct
+<strong>communication function</strong>, expresses the correct
+<strong>intent</strong>, and targets the required
+<strong>information</strong>.
+The State Engine keeps final control of task progression.
+</p>
+
+<div class="task-card">
+
+<div><strong>Scenario:</strong> Booking a Tour</div>
+<div><strong>Student role:</strong> Travel Agent</div>
+<div><strong>AI role:</strong> Tourist</div>
+
+<div id="taskNumber"></div>
+
+<div id="taskInstruction" class="task-title"></div>
+
+<div class="small">
+Expected function:
+<strong id="expectedFunction"></strong>
+</div>
+
+<div class="small">
+Expected intent:
+<strong id="expectedIntent"></strong>
+</div>
+
+<div class="small">
+Expected information:
+<strong id="expectedInformation"></strong>
+</div>
+
+</div>
+
+<label for="learnerInput">Learner transcript</label>
+
+<input
+id="learnerInput"
+type="text"
+placeholder="Enter the learner response here"
+autocomplete="off">
+
+<div class="buttons">
+
+<button class="check" onclick="checkResponse()">
+✓ CHECK RESPONSE
+</button>
+
+<button class="try" onclick="tryAgain()">
+↻ TRY AGAIN
+</button>
+
+<button
+id="advanceButton"
+class="advance"
+onclick="advanceTask()"
+disabled>
+→ ADVANCE
+</button>
+
+<button class="restart" onclick="restartTest()">
+⟳ RESTART
+</button>
+
+</div>
+
+<div id="statusBox" class="status waiting">
+○ WAITING — complete the current communication task.
+</div>
+
+<div id="statePanel" class="panel state"></div>
+
+<div id="semanticPanel" class="panel semantic">
+<strong>Semantic Validator</strong><br>
+No response checked yet.
+</div>
+
+<div id="intentPanel" class="panel intent">
+<strong>Intent Guard</strong><br>
+No intent checked yet.
+</div>
+
+<div id="hintPanel" class="panel hint">
+<strong>Progressive Hint</strong><br>
+No hint needed yet.
+</div>
+
+<div class="rules">
+
+<strong>V0.5 Control Rules</strong>
+
+<p>
+1. Matching the broad function alone is not enough.
+</p>
+
+<p>
+2. The learner must perform the required
+<strong>function + intent + information target</strong>.
+</p>
+
+<p>
+3. A related but different question must not unlock ADVANCE.
+</p>
+
+<p>
+4. Natural paraphrases with the same communicative intent should pass.
+</p>
+
+<p>
+5. Statements cannot satisfy a task requiring a question.
+</p>
+
+<p>
+6. The State Engine — not the learner and not the AI — controls progression.
+</p>
+
+</div>
+
+</div>
+
+<script>
+
+/* =========================================================
+   SPEAK STATE + SEMANTIC VALIDATOR V0.5
+   Prototype only.
+   ========================================================= */
+
+
+/* -------------------------
+   TASK DEFINITIONS
+------------------------- */
+
+const tasks = [
+
+{
+  id: "ASK_DESTINATION",
+
+  instruction:
+  "Ask the tourist where they would like to travel",
+
+  expectedFunction:
+  "ASK_QUESTION",
+
+  expectedIntent:
+  "DESTINATION_QUERY",
+
+  expectedInformation:
+  "DESTINATION",
+
+  hints: [
+    "ask • destination",
+    "Where would you like to ______?",
+    "Where would you like to travel?"
+  ]
+},
+
+{
+  id: "GIVE_ACTIVITY_INFORMATION",
+
+  instruction:
+  "Tell the tourist about activities included in the tour",
+
+  expectedFunction:
+  "GIVE_INFORMATION",
+
+  expectedIntent:
+  "ACTIVITY_INFORMATION",
+
+  expectedInformation:
+  "ACTIVITY",
+
+  hints: [
+    "activities • sightseeing • food",
+    "The tour includes ______.",
+    "The tour includes sightseeing and local food."
+  ]
+},
+
+{
+  id: "ASK_ACCOMMODATION",
+
+  instruction:
+  "Ask what kind of accommodation the tourist prefers",
+
+  expectedFunction:
+  "ASK_QUESTION",
+
+  expectedIntent:
+  "ACCOMMODATION_QUERY",
+
+  expectedInformation:
+  "ACCOMMODATION",
+
+  hints: [
+    "ask • accommodation",
+    "Where would you like to ______?",
+    "Where would you like to stay?"
+  ]
+},
+
+{
+  id: "GIVE_PRICE_INFORMATION",
+
+  instruction:
+  "Tell the tourist the price of the room or tour",
+
+  expectedFunction:
+  "GIVE_INFORMATION",
+
+  expectedIntent:
+  "PRICE_INFORMATION",
+
+  expectedInformation:
+  "PRICE",
+
+  hints: [
+    "price • cost",
+    "It costs ______.",
+    "It costs 200 dollars."
+  ]
+},
+
+{
+  id: "ASK_DURATION",
+
+  instruction:
+  "Ask how long the tourist would like to stay",
+
+  expectedFunction:
+  "ASK_QUESTION",
+
+  expectedIntent:
+  "DURATION_QUERY",
+
+  expectedInformation:
+  "DURATION",
+
+  hints: [
+    "ask • duration",
+    "How long would you like to ______?",
+    "How long would you like to stay?"
+  ]
+},
+
+{
+  id: "CONFIRM_BOOKING",
+
+  instruction:
+  "Confirm the tourist's booking",
+
+  expectedFunction:
+  "CONFIRM_INFORMATION",
+
+  expectedIntent:
+  "BOOKING_CONFIRMATION",
+
+  expectedInformation:
+  "BOOKING",
+
+  hints: [
+    "confirm • booking",
+    "Your booking is ______.",
+    "Your booking is confirmed."
+  ]
+}
+
+];
+
+
+/* -------------------------
+   STATE ENGINE
+------------------------- */
+
+let currentTaskIndex = 0;
+let hintLevel = 0;
+let advanceUnlocked = false;
+let completedTasks = 0;
+
+
+/* -------------------------
+   NORMALIZATION
+------------------------- */
+
+function normalize(text) {
+
+  return text
+    .toLowerCase()
+    .replace(/[’‘]/g, "'")
+    .replace(/[?.!,;:]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+
+/* -------------------------
+   LANGUAGE HELPERS
+------------------------- */
+
+function containsAny(text, phrases) {
+
+  return phrases.some(function(phrase) {
+    return text.includes(phrase);
+  });
+}
+
+
+function isQuestionLike(original, normalized) {
+
+  if (original.trim().endsWith("?")) {
+    return true;
+  }
+
+  const questionStarts = [
+    "where ",
+    "what ",
+    "which ",
+    "how ",
+    "when ",
+    "why ",
+    "who ",
+    "could you ",
+    "can you ",
+    "would you ",
+    "do you ",
+    "does ",
+    "did ",
+    "have you ",
+    "are you ",
+    "is there ",
+    "is the ",
+    "what kind ",
+    "what type "
+  ];
+
+  return questionStarts.some(function(start) {
+    return normalized.startsWith(start);
+  });
+}
+
+
+/* -------------------------
+   FUNCTION DETECTOR
+------------------------- */
+
+function detectFunction(original, text) {
+
+  if (isQuestionLike(original, text)) {
+    return "ASK_QUESTION";
+  }
+
+  if (
+    containsAny(text, [
+      "confirmed",
+      "confirmation",
+      "booked",
+      "reserved",
+      "reservation is complete",
+      "booking is complete"
+    ])
+  ) {
+    return "CONFIRM_INFORMATION";
+  }
+
+  if (text.length > 0) {
+    return "GIVE_INFORMATION";
+  }
+
+  return "UNKNOWN";
+}
+
+
+/* =========================================================
+   INTENT GUARD V0.5
+   ---------------------------------------------------------
+   The goal is not keyword matching alone.
+   It combines:
+   - question form
+   - semantic target
+   - competing intent detection
+   - natural paraphrase patterns
+   ========================================================= */
+
+
+/* -------------------------
+   DESTINATION QUERY
+------------------------- */
+
+function destinationIntent(original, text) {
+
+  if (!isQuestionLike(original, text)) {
+    return false;
+  }
+
+  /*
+    Explicit wrong-intent competitors.
+    These may still be valid questions,
+    but they are NOT destination questions.
+  */
+
+  const competingIntent = containsAny(text, [
+
+    "how much",
+    "cost",
+    "price",
+    "per night",
+
+    "what activities",
+    "which activities",
+    "what can i do",
+    "what can we do",
+    "things to do",
+
+    "how long",
+    "how many days",
+    "how many nights",
+
+    "where would you like to stay",
+    "where do you want to stay",
+    "what hotel",
+    "which hotel",
+    "accommodation",
+    "room",
+
+    "do you want to travel",
+    "would you like to travel"
+
+  ]);
+
+  if (competingIntent) {
+    return false;
+  }
+
+
+  /*
+    Strong destination words.
+  */
+
+  const destinationWords = containsAny(text, [
+    "destination",
+    "country",
+    "city",
+    "place"
+  ]);
+
+
+  /*
+    Natural movement/travel expressions.
+  */
+
+  const travelTarget = containsAny(text, [
+    "where would you like to travel",
+    "where do you want to travel",
+    "where would you like to go",
+    "where do you want to go",
+    "where are you going",
+    "where are you planning to go",
+    "where do you plan to go",
+    "where would you like to visit",
+    "where do you want to visit",
+    "which country would you like to visit",
+    "which country do you want to visit",
+    "what country would you like to visit",
+    "what country do you want to visit",
+    "which city would you like to visit",
+    "which city do you want to visit",
+    "what city would you like to visit",
+    "what city do you want to visit",
+    "what destination do you have in mind",
+    "which destination do you have in mind",
+    "where are you thinking of going",
+    "where are you thinking about going"
+  ]);
+
+
+  /*
+    Indirect but communicatively valid destination questions.
+
+    Examples:
+    Have you decided where you'd like to go?
+    Do you know where you'd like to go?
+    Have you chosen where you want to travel?
+  */
+
+  const indirectDecisionPattern =
+
+    (
+      containsAny(text, [
+        "have you decided",
+        "have you chosen",
+        "do you know",
+        "have you thought"
+      ])
+      &&
+      containsAny(text, [
+        "where you'd like to go",
+        "where you would like to go",
+        "where you want to go",
+        "where you'd like to travel",
+        "where you would like to travel",
+        "where you want to travel",
+        "where you'd like to visit",
+        "where you would like to visit",
+        "where you want to visit"
+      ])
+    );
+
+
+  /*
+    Broad destination noun questions.
+
+    Example:
+    What destination do you prefer?
+  */
+
+  const destinationNounPattern =
+
+    destinationWords
+    &&
+    containsAny(text, [
+      "what ",
+      "which ",
+      "where ",
+      "prefer",
+      "choose",
+      "chosen",
+      "like",
+      "want",
+      "mind"
+    ]);
+
+
+  return (
+    travelTarget ||
+    indirectDecisionPattern ||
+    destinationNounPattern
+  );
+}
+
+
+/* -------------------------
+   ACTIVITY INFORMATION
+------------------------- */
+
+function activityInformationIntent(original, text) {
+
+  if (isQuestionLike(original, text)) {
+    return false;
+  }
+
+  const activityEvidence = containsAny(text, [
+
+    "sightseeing",
+    "city tour",
+    "city tours",
+    "tour",
+    "tours",
+
+    "cooking class",
+    "cooking classes",
+
+    "local food",
+    "food tour",
+    "food tours",
+
+    "museum",
+    "museums",
+
+    "market",
+    "markets",
+
+    "beach",
+    "beaches",
+
+    "temple",
+    "temples",
+
+    "shopping",
+    "hiking",
+    "cycling",
+    "snorkeling",
+    "swimming",
+
+    "visit ",
+    "explore ",
+    "try ",
+    "see ",
+    "enjoy ",
+
+    "activities include",
+    "activity includes",
+    "tour includes",
+    "package includes",
+    "you can "
+  ]);
+
+  const wrongInformation = containsAny(text, [
+    "dollar",
+    "costs",
+    "price is",
+    "per night",
+    "three nights",
+    "four nights",
+    "five nights",
+    "hotel costs",
+    "room costs"
+  ]);
+
+  return activityEvidence && !wrongInformation;
+}
+
+
+/* -------------------------
+   ACCOMMODATION QUERY
+------------------------- */
+
+function accommodationIntent(original, text) {
+
+  if (!isQuestionLike(original, text)) {
+    return false;
+  }
+
+  const wrongIntent = containsAny(text, [
+    "how much",
+    "cost",
+    "price",
+    "what activities",
+    "which activities",
+    "how long",
+    "destination",
+    "which country",
+    "what country",
+    "where would you like to travel",
+    "where do you want to travel",
+    "where would you like to go",
+    "where do you want to go"
+  ]);
+
+  if (wrongIntent) {
+    return false;
+  }
+
+  const accommodationTarget = containsAny(text, [
+    "accommodation",
+    "hotel",
+    "hostel",
+    "resort",
+    "room",
+    "stay"
+  ]);
+
+  const validPatterns = containsAny(text, [
+    "where would you like to stay",
+    "where do you want to stay",
+    "where would you prefer to stay",
+    "what kind of accommodation",
+    "what type of accommodation",
+    "which hotel",
+    "what hotel",
+    "what kind of hotel",
+    "what type of hotel",
+    "what room",
+    "which room",
+    "what kind of room",
+    "what type of room"
+  ]);
+
+  return accommodationTarget && validPatterns;
+}
+
+
+/* -------------------------
+   PRICE INFORMATION
+------------------------- */
+
+function priceInformationIntent(original, text) {
+
+  if (isQuestionLike(original, text)) {
+    return false;
+  }
+
+  const priceEvidence =
+    containsAny(text, [
+      "costs",
+      "cost is",
+      "price is",
+      "price will be",
+      "per night",
+      "per person",
+      "dollar",
+      "dollars",
+      "$",
+      "usd"
+    ])
+    ||
+    /\b\d+([.,]\d+)?\b/.test(text);
+
+  return priceEvidence;
+}
+
+
+/* -------------------------
+   DURATION QUERY
+------------------------- */
+
+function durationIntent(original, text) {
+
+  if (!isQuestionLike(original, text)) {
+    return false;
+  }
+
+  const wrongIntent = containsAny(text, [
+    "how much",
+    "cost",
+    "price",
+    "destination",
+    "which country",
+    "what country",
+    "what activities",
+    "which activities"
+  ]);
+
+  if (wrongIntent) {
+    return false;
+  }
+
+  return containsAny(text, [
+    "how long",
+    "how many days",
+    "how many nights",
+    "what duration",
+    "length of your stay",
+    "when will you leave",
+    "when are you leaving"
+  ]);
+}
+
+
+/* -------------------------
+   BOOKING CONFIRMATION
+------------------------- */
+
+function bookingConfirmationIntent(original, text) {
+
+  if (isQuestionLike(original, text)) {
+    return false;
+  }
+
+  const bookingEvidence = containsAny(text, [
+    "booking is confirmed",
+    "booking has been confirmed",
+    "your booking is confirmed",
+    "reservation is confirmed",
+    "reservation has been confirmed",
+    "your reservation is confirmed",
+    "tour is booked",
+    "tour has been booked",
+    "room is booked",
+    "room has been booked",
+    "booking is complete",
+    "reservation is complete",
+    "successfully booked",
+    "confirmed your booking",
+    "confirmed your reservation"
+  ]);
+
+  return bookingEvidence;
+}
+
+
+/* -------------------------
+   INTENT ROUTER
+------------------------- */
+
+function detectIntent(task, original, text) {
+
+  switch (task.expectedIntent) {
+
+    case "DESTINATION_QUERY":
+
+      return destinationIntent(original, text)
+        ? "DESTINATION_QUERY"
+        : detectCompetingIntent(original, text);
+
+
+    case "ACTIVITY_INFORMATION":
+
+      return activityInformationIntent(original, text)
+        ? "ACTIVITY_INFORMATION"
+        : detectCompetingIntent(original, text);
+
+
+    case "ACCOMMODATION_QUERY":
+
+      return accommodationIntent(original, text)
+        ? "ACCOMMODATION_QUERY"
+        : detectCompetingIntent(original, text);
+
+
+    case "PRICE_INFORMATION":
+
+      return priceInformationIntent(original, text)
+        ? "PRICE_INFORMATION"
+        : detectCompetingIntent(original, text);
+
+
+    case "DURATION_QUERY":
+
+      return durationIntent(original, text)
+        ? "DURATION_QUERY"
+        : detectCompetingIntent(original, text);
+
+
+    case "BOOKING_CONFIRMATION":
+
+      return bookingConfirmationIntent(original, text)
+        ? "BOOKING_CONFIRMATION"
+        : detectCompetingIntent(original, text);
+  }
+
+  return "UNKNOWN";
+}
+
+
+/* -------------------------
+   COMPETING INTENT DETECTOR
+------------------------- */
+
+function detectCompetingIntent(original, text) {
+
+  if (destinationIntent(original, text)) {
+    return "DESTINATION_QUERY";
+  }
+
+  if (accommodationIntent(original, text)) {
+    return "ACCOMMODATION_QUERY";
+  }
+
+  if (durationIntent(original, text)) {
+    return "DURATION_QUERY";
+  }
+
+  if (activityInformationIntent(original, text)) {
+    return "ACTIVITY_INFORMATION";
+  }
+
+  if (priceInformationIntent(original, text)) {
+    return "PRICE_INFORMATION";
+  }
+
+  if (bookingConfirmationIntent(original, text)) {
+    return "BOOKING_CONFIRMATION";
+  }
+
+  if (isQuestionLike(original, text)) {
+    return "OTHER_QUESTION";
+  }
+
+  if (text.length > 0) {
+    return "OTHER_INFORMATION";
+  }
+
+  return "UNKNOWN";
+}
+
+
+/* -------------------------
+   INFORMATION DETECTOR
+------------------------- */
+
+function detectInformation(task, original, text) {
+
+  switch (task.expectedInformation) {
+
+    case "DESTINATION":
+
+      return destinationIntent(original, text);
+
+
+    case "ACTIVITY":
+
+      return activityInformationIntent(original, text);
+
+
+    case "ACCOMMODATION":
+
+      return accommodationIntent(original, text);
+
+
+    case "PRICE":
+
+      return priceInformationIntent(original, text);
+
+
+    case "DURATION":
+
+      return durationIntent(original, text);
+
+
+    case "BOOKING":
+
+      return bookingConfirmationIntent(original, text);
+  }
+
+  return false;
+}
+
+
+/* -------------------------
+   SEMANTIC VALIDATOR
+------------------------- */
+
+function validateResponse(original) {
+
+  const task = tasks[currentTaskIndex];
+
+  const text = normalize(original);
+
+  if (!text) {
+
+    return {
+      result: "UNCERTAIN",
+      detectedFunction: "UNKNOWN",
+      detectedIntent: "UNKNOWN",
+      informationMatched: false,
+      reason: "No usable learner response was detected."
+    };
+  }
+
+
+  const detectedFunction =
+    detectFunction(original, text);
+
+  const detectedIntent =
+    detectIntent(task, original, text);
+
+  const informationMatched =
+    detectInformation(task, original, text);
+
+
+  const functionMatched =
+    detectedFunction === task.expectedFunction;
+
+  const intentMatched =
+    detectedIntent === task.expectedIntent;
+
+
+  if (
+    functionMatched &&
+    intentMatched &&
+    informationMatched
+  ) {
+
+    return {
+      result: "PASS",
+      detectedFunction,
+      detectedIntent,
+      informationMatched,
+      reason:
+      "Function + intent + information target matched."
+    };
+  }
+
+
+  return {
+    result: "NEEDS_SUPPORT",
+    detectedFunction,
+    detectedIntent,
+    informationMatched,
+    reason:
+    buildFailureReason(
+      task,
+      detectedFunction,
+      detectedIntent,
+      informationMatched
+    )
+  };
+}
+
+
+/* -------------------------
+   FAILURE EXPLANATION
+------------------------- */
+
+function buildFailureReason(
+  task,
+  detectedFunction,
+  detectedIntent,
+  informationMatched
+) {
+
+  if (detectedFunction !== task.expectedFunction) {
+
+    return (
+      "The learner used " +
+      detectedFunction +
+      ", but the current task requires " +
+      task.expectedFunction +
+      "."
+    );
+  }
+
+
+  if (detectedIntent !== task.expectedIntent) {
+
+    return (
+      "The broad communication function is correct, but the intent is " +
+      detectedIntent +
+      " instead of " +
+      task.expectedIntent +
+      "."
+    );
+  }
+
+
+  if (!informationMatched) {
+
+    return (
+      "The required information target " +
+      task.expectedInformation +
+      " was not clearly achieved."
+    );
+  }
+
+
+  return "The current communication task has not been fully achieved.";
+}
+
+
+/* -------------------------
+   CHECK RESPONSE
+------------------------- */
+
+function checkResponse() {
+
+  const input =
+    document.getElementById("learnerInput");
+
+  const original =
+    input.value.trim();
+
+  const result =
+    validateResponse(original);
+
+
+  if (result.result === "PASS") {
+
+    advanceUnlocked = true;
+
+    document.getElementById(
+      "advanceButton"
+    ).disabled = false;
+
+    setStatus(
+      "pass",
+      "🟢 PASS — Function + Intent + Information matched. State Engine has unlocked ADVANCE."
+    );
+
+    document.getElementById(
+      "hintPanel"
+    ).innerHTML =
+      "<strong>Progressive Hint</strong><br>" +
+      "No hint needed. The learner has completed the current task.";
+
+  }
+
+  else if (result.result === "UNCERTAIN") {
+
+    advanceUnlocked = false;
+
+    document.getElementById(
+      "advanceButton"
+    ).disabled = true;
+
+    setStatus(
+      "uncertain",
+      "🟠 UNCERTAIN — I couldn't identify a usable response. Please try again."
+    );
+
+  }
+
+  else {
+
+    advanceUnlocked = false;
+
+    document.getElementById(
+      "advanceButton"
+    ).disabled = true;
+
+    if (hintLevel < 3) {
+      hintLevel++;
+    }
+
+    setStatus(
+      "support",
+      "🟡 NEEDS SUPPORT — current task has not been achieved. Stay on this task. Do not advance."
+    );
+
+    showHint();
+  }
+
+
+  document.getElementById(
+    "semanticPanel"
+  ).innerHTML =
+
+    "<strong>Semantic Validator</strong><br><br>" +
+
+    "Result: <strong>" +
+    result.result +
+    "</strong><br>" +
+
+    "Detected function: " +
+    result.detectedFunction +
+    "<br>" +
+
+    "Required function: " +
+    tasks[currentTaskIndex].expectedFunction +
+    "<br>" +
+
+    "Information matched: " +
+    result.informationMatched +
+    "<br><br>" +
+
+    "<strong>Reason:</strong> " +
+    result.reason;
+
+
+  document.getElementById(
+    "intentPanel"
+  ).innerHTML =
+
+    "<strong>Intent Guard</strong><br><br>" +
+
+    "Detected intent: <strong>" +
+    result.detectedIntent +
+    "</strong><br>" +
+
+    "Required intent: <strong>" +
+    tasks[currentTaskIndex].expectedIntent +
+    "</strong><br><br>" +
+
+    (
+      result.detectedIntent ===
+      tasks[currentTaskIndex].expectedIntent
+
+      ? "✅ Intent matched."
+
+      : "⛔ Intent mismatch. ADVANCE remains locked."
+    );
+
+
+  renderState();
+}
+
+
+/* -------------------------
+   HINT ENGINE
+------------------------- */
+
+function showHint() {
+
+  const task =
+    tasks[currentTaskIndex];
+
+  const level =
+    Math.max(1, Math.min(hintLevel, 3));
+
+  const hint =
+    task.hints[level - 1];
+
+  document.getElementById(
+    "hintPanel"
+  ).innerHTML =
+
+    "<strong>Progressive Hint</strong><br><br>" +
+
+    "Hint " +
+    level +
+    ": <strong>" +
+    hint +
+    "</strong>";
+}
+
+
+/* -------------------------
+   TRY AGAIN
+------------------------- */
+
+function tryAgain() {
+
+  document.getElementById(
+    "learnerInput"
+  ).value = "";
+
+  document.getElementById(
+    "learnerInput"
+  ).focus();
+
+  advanceUnlocked = false;
+
+  document.getElementById(
+    "advanceButton"
+  ).disabled = true;
+
+  setStatus(
+    "waiting",
+    "○ WAITING — try the same communication task again."
+  );
+
+  renderState();
+}
+
+
+/* -------------------------
+   ADVANCE TASK
+------------------------- */
+
+function advanceTask() {
+
+  if (!advanceUnlocked) {
+    return;
+  }
+
+  completedTasks++;
+
+  currentTaskIndex++;
+
+  hintLevel = 0;
+  advanceUnlocked = false;
+
+
+  if (currentTaskIndex >= tasks.length) {
+
+    showCompletion();
+    return;
+  }
+
+
+  document.getElementById(
+    "learnerInput"
+  ).value = "";
+
+  document.getElementById(
+    "advanceButton"
+  ).disabled = true;
+
+  document.getElementById(
+    "semanticPanel"
+  ).innerHTML =
+    "<strong>Semantic Validator</strong><br>" +
+    "Previous task completed. Waiting for the next learner response.";
+
+  document.getElementById(
+    "intentPanel"
+  ).innerHTML =
+    "<strong>Intent Guard</strong><br>" +
+    "Previous intent completed. Waiting for the next learner response.";
+
+  document.getElementById(
+    "hintPanel"
+  ).innerHTML =
+    "<strong>Progressive Hint</strong><br>" +
+    "No hint needed yet.";
+
+  setStatus(
+    "waiting",
+    "✅ Previous task completed. State Engine has opened the next task."
+  );
+
+  renderTask();
+  renderState();
+}
+
+
+/* -------------------------
+   COMPLETION
+------------------------- */
+
+function showCompletion() {
+
+  document.getElementById(
+    "taskNumber"
+  ).innerHTML =
+    "<strong>Session complete</strong>";
+
+  document.getElementById(
+    "taskInstruction"
+  ).textContent =
+    "All communication tasks have been completed.";
+
+  document.getElementById(
+    "expectedFunction"
+  ).textContent = "—";
+
+  document.getElementById(
+    "expectedIntent"
+  ).textContent = "—";
+
+  document.getElementById(
+    "expectedInformation"
+  ).textContent = "—";
+
+  document.getElementById(
+    "learnerInput"
+  ).disabled = true;
+
+  document.getElementById(
+    "advanceButton"
+  ).disabled = true;
+
+  setStatus(
+    "pass",
+    "🎉 COMPLETE — all controlled communication tasks were completed."
+  );
+
+  document.getElementById(
+    "semanticPanel"
+  ).innerHTML =
+    "<strong>Semantic Validator</strong><br>" +
+    "Session completed.";
+
+  document.getElementById(
+    "intentPanel"
+  ).innerHTML =
+    "<strong>Intent Guard</strong><br>" +
+    "All required intents completed.";
+
+  document.getElementById(
+    "hintPanel"
+  ).innerHTML =
+    "<strong>Progressive Hint</strong><br>" +
+    "Session complete.";
+
+  renderState();
+}
+
+
+/* -------------------------
+   RESTART
+------------------------- */
+
+function restartTest() {
+
+  currentTaskIndex = 0;
+  hintLevel = 0;
+  advanceUnlocked = false;
+  completedTasks = 0;
+
+  const input =
+    document.getElementById(
+      "learnerInput"
+    );
+
+  input.disabled = false;
+  input.value = "";
+
+  document.getElementById(
+    "advanceButton"
+  ).disabled = true;
+
+  document.getElementById(
+    "semanticPanel"
+  ).innerHTML =
+    "<strong>Semantic Validator</strong><br>" +
+    "No response checked yet.";
+
+  document.getElementById(
+    "intentPanel"
+  ).innerHTML =
+    "<strong>Intent Guard</strong><br>" +
+    "No intent checked yet.";
+
+  document.getElementById(
+    "hintPanel"
+  ).innerHTML =
+    "<strong>Progressive Hint</strong><br>" +
+    "No hint needed yet.";
+
+  setStatus(
+    "waiting",
+    "○ WAITING — complete the current communication task."
+  );
+
+  renderTask();
+  renderState();
+}
+
+
+/* -------------------------
+   RENDER TASK
+------------------------- */
+
+function renderTask() {
+
+  const task =
+    tasks[currentTaskIndex];
+
+  document.getElementById(
+    "taskNumber"
+  ).innerHTML =
+    "<strong>Task " +
+    (currentTaskIndex + 1) +
+    " of " +
+    tasks.length +
+    "</strong>";
+
+  document.getElementById(
+    "taskInstruction"
+  ).textContent =
+    task.instruction;
+
+  document.getElementById(
+    "expectedFunction"
+  ).textContent =
+    task.expectedFunction;
+
+  document.getElementById(
+    "expectedIntent"
+  ).textContent =
+    task.expectedIntent;
+
+  document.getElementById(
+    "expectedInformation"
+  ).textContent =
+    task.expectedInformation;
+}
+
+
+/* -------------------------
+   RENDER STATE
+------------------------- */
+
+function renderState() {
+
+  const task =
+    currentTaskIndex < tasks.length
+      ? tasks[currentTaskIndex]
+      : null;
+
+  document.getElementById(
+    "statePanel"
+  ).innerHTML =
+
+    "<strong>State Engine</strong><br>" +
+
+    "currentTask: " +
+    (task ? task.id : "COMPLETE") +
+    "<br>" +
+
+    "expectedFunction: " +
+    (task ? task.expectedFunction : "—") +
+    "<br>" +
+
+    "expectedIntent: " +
+    (task ? task.expectedIntent : "—") +
+    "<br>" +
+
+    "expectedInformation: " +
+    (task ? task.expectedInformation : "—") +
+    "<br>" +
+
+    "hintLevel: " +
+    hintLevel +
+    "<br>" +
+
+    "advance: " +
+    advanceUnlocked +
+    "<br>" +
+
+    "completedTasks: " +
+    completedTasks +
+    "/" +
+    tasks.length;
+}
+
+
+/* -------------------------
+   STATUS
+------------------------- */
+
+function setStatus(type, message) {
+
+  const box =
+    document.getElementById(
+      "statusBox"
+    );
+
+  box.className =
+    "status " + type;
+
+  box.innerHTML =
+    message;
+}
+
+
+/* -------------------------
+   ENTER KEY SUPPORT
+------------------------- */
+
+document.getElementById(
+  "learnerInput"
+).addEventListener(
+  "keydown",
+  function(event) {
+
+    if (event.key === "Enter") {
+      checkResponse();
+    }
+  }
+);
+
+
+/* -------------------------
+   INITIAL LOAD
+------------------------- */
+
+renderTask();
+renderState();
+
+</script>
+
+</body>
+</html>
