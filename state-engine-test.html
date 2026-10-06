@@ -1,0 +1,711 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SPEAK State Engine V0.2</title>
+
+<style>
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    font-family: Arial, Helvetica, sans-serif;
+    background: #f3f6fb;
+    color: #10213d;
+  }
+
+  .container {
+    max-width: 720px;
+    margin: 35px auto;
+    padding: 16px;
+  }
+
+  .card {
+    background: white;
+    border-radius: 18px;
+    padding: 24px;
+    box-shadow: 0 6px 24px rgba(0,0,0,0.08);
+  }
+
+  h1 {
+    margin-top: 0;
+    font-size: 27px;
+  }
+
+  .subtitle {
+    line-height: 1.5;
+    margin-bottom: 18px;
+  }
+
+  .scenario {
+    background: #eaf1ff;
+    padding: 16px;
+    border-radius: 12px;
+    margin-bottom: 16px;
+  }
+
+  .progress {
+    font-weight: bold;
+    margin-bottom: 8px;
+  }
+
+  .task {
+    font-size: 18px;
+    font-weight: bold;
+    margin-top: 8px;
+  }
+
+  .expected {
+    margin-top: 8px;
+    font-size: 14px;
+  }
+
+  label {
+    display: block;
+    font-weight: bold;
+    margin: 14px 0 7px;
+  }
+
+  input {
+    width: 100%;
+    padding: 12px;
+    font-size: 16px;
+    border: 1px solid #b8c4d8;
+    border-radius: 8px;
+  }
+
+  .buttons {
+    display: flex;
+    gap: 9px;
+    flex-wrap: wrap;
+    margin-top: 15px;
+  }
+
+  button {
+    border: none;
+    border-radius: 8px;
+    padding: 11px 16px;
+    font-weight: bold;
+    cursor: pointer;
+  }
+
+  #checkBtn {
+    background: #12a88a;
+    color: white;
+  }
+
+  #tryBtn {
+    background: #64748b;
+    color: white;
+  }
+
+  #advanceBtn {
+    background: #2563eb;
+    color: white;
+  }
+
+  #advanceBtn:disabled {
+    background: #aac4f7;
+    cursor: not-allowed;
+  }
+
+  #restartBtn {
+    background: #172554;
+    color: white;
+  }
+
+  .message {
+    margin-top: 16px;
+    padding: 14px;
+    border-radius: 10px;
+    font-weight: bold;
+    line-height: 1.45;
+  }
+
+  .waiting {
+    background: #eef2f7;
+  }
+
+  .support {
+    background: #fff5cc;
+  }
+
+  .pass {
+    background: #d9f8df;
+  }
+
+  .uncertain {
+    background: #ffe5d0;
+  }
+
+  .state {
+    margin-top: 12px;
+    background: #e4f3ff;
+    padding: 14px;
+    border-radius: 10px;
+    line-height: 1.55;
+  }
+
+  .hint {
+    margin-top: 12px;
+    background: #fff6d8;
+    border-left: 4px solid #f2b824;
+    padding: 14px;
+    border-radius: 8px;
+    line-height: 1.45;
+  }
+
+  .completed {
+    margin-top: 16px;
+    background: #dcfce7;
+    padding: 18px;
+    border-radius: 12px;
+    line-height: 1.55;
+  }
+
+  .rule {
+    margin-top: 18px;
+    padding: 14px;
+    background: #f6f7f9;
+    border-radius: 10px;
+    line-height: 1.55;
+  }
+
+  .small {
+    font-size: 13px;
+  }
+</style>
+</head>
+
+<body>
+
+<div class="container">
+  <div class="card">
+
+    <h1>🧠 SPEAK State Engine V0.2</h1>
+
+    <div class="subtitle">
+      This prototype tests whether the system can keep the learner on the
+      current communication task and move through a controlled sequence
+      without skipping tasks.
+    </div>
+
+    <div class="scenario">
+      <strong>Scenario:</strong> Booking a Tour<br>
+      <strong>Student role:</strong> Travel Agent<br>
+      <strong>AI role:</strong> Tourist
+
+      <div class="progress" id="progress"></div>
+      <div class="task" id="taskText"></div>
+      <div class="expected" id="expectedText"></div>
+    </div>
+
+    <label for="learnerInput">Learner transcript</label>
+
+    <input
+      id="learnerInput"
+      type="text"
+      autocomplete="off"
+      placeholder="Enter the learner response here"
+    >
+
+    <div class="buttons">
+      <button id="checkBtn">✓ CHECK RESPONSE</button>
+      <button id="tryBtn">↻ TRY AGAIN</button>
+      <button id="advanceBtn" disabled>→ ADVANCE</button>
+      <button id="restartBtn">⟳ RESTART</button>
+    </div>
+
+    <div id="message" class="message waiting">
+      ⚪ WAITING — complete the current communication task.
+    </div>
+
+    <div id="stateBox" class="state"></div>
+
+    <div id="hintBox" class="hint" style="display:none;"></div>
+
+    <div id="completionBox" class="completed" style="display:none;"></div>
+
+    <div class="rule">
+      <strong>State Engine rules</strong><br><br>
+
+      🟢 <strong>PASS</strong> — only PASS unlocks ADVANCE.<br><br>
+
+      🟡 <strong>NEEDS SUPPORT</strong> — remain on the same task.
+      Hint 1 → Hint 2 → Hint 3 progressively.<br><br>
+
+      🟠 <strong>UNCERTAIN</strong> — ask the learner to say it again.
+      Do not increase the hint level.<br><br>
+
+      🔒 <strong>Task Lock</strong> — the next task cannot open until
+      the current task has been achieved.<br><br>
+
+      🧱 <strong>Student-Task Firewall</strong> — the system must never
+      complete the student's required communication task for them.
+    </div>
+
+  </div>
+</div>
+
+<script>
+const tasks = [
+  {
+    id: "ASK_DESTINATION",
+    title: "Ask the tourist where they would like to travel",
+    expectedFunction: "ASK_QUESTION",
+    expectedInformation: "DESTINATION",
+
+    hints: [
+      "ask • destination",
+      "Where would you like to ______?",
+      "Where would you like to travel?"
+    ],
+
+    validate(text) {
+      const t = normalize(text);
+
+      const hasQuestion =
+        t.includes("where") ||
+        t.includes("which place") ||
+        t.includes("which country") ||
+        t.includes("destination");
+
+      const travelIdea =
+        t.includes("travel") ||
+        t.includes("go") ||
+        t.includes("visit") ||
+        t.includes("destination");
+
+      return hasQuestion && travelIdea;
+    }
+  },
+
+  {
+    id: "GIVE_ACTIVITY_INFORMATION",
+    title: "Tell the tourist about activities included in the tour",
+    expectedFunction: "GIVE_INFORMATION",
+    expectedInformation: "ACTIVITY",
+
+    hints: [
+      "activities • sightseeing • local food",
+      "The tour includes ______.",
+      "The tour includes sightseeing and local food."
+    ],
+
+    validate(text) {
+      const t = normalize(text);
+
+      const activityWords = [
+        "sightseeing",
+        "local food",
+        "food tour",
+        "city tour",
+        "museum",
+        "market",
+        "temple",
+        "beach",
+        "shopping",
+        "boat",
+        "cooking",
+        "visit"
+      ];
+
+      return activityWords.some(word => t.includes(word));
+    }
+  },
+
+  {
+    id: "ASK_ACCOMMODATION",
+    title: "Ask what kind of accommodation the tourist prefers",
+    expectedFunction: "ASK_QUESTION",
+    expectedInformation: "ACCOMMODATION",
+
+    hints: [
+      "ask • accommodation",
+      "What kind of accommodation would you ______?",
+      "What kind of accommodation would you prefer?"
+    ],
+
+    validate(text) {
+      const t = normalize(text);
+
+      const accommodation =
+        t.includes("accommodation") ||
+        t.includes("hotel") ||
+        t.includes("room") ||
+        t.includes("stay");
+
+      const question =
+        t.includes("what") ||
+        t.includes("where") ||
+        t.includes("would you") ||
+        t.includes("do you");
+
+      return accommodation && question;
+    }
+  },
+
+  {
+    id: "ASK_DURATION",
+    title: "Ask how long the tourist would like to stay",
+    expectedFunction: "ASK_QUESTION",
+    expectedInformation: "DURATION",
+
+    hints: [
+      "ask • duration",
+      "How long would you like to ______?",
+      "How long would you like to stay?"
+    ],
+
+    validate(text) {
+      const t = normalize(text);
+
+      return (
+        (t.includes("how long") && t.includes("stay")) ||
+        t.includes("how many nights") ||
+        t.includes("how many days")
+      );
+    }
+  },
+
+  {
+    id: "GIVE_PRICE_INFORMATION",
+    title: "Tell the tourist the price",
+    expectedFunction: "GIVE_INFORMATION",
+    expectedInformation: "PRICE",
+
+    hints: [
+      "price • cost",
+      "It costs ______ dollars.",
+      "It costs forty-five dollars."
+    ],
+
+    validate(text) {
+      const t = normalize(text);
+
+      const priceLanguage =
+        t.includes("cost") ||
+        t.includes("price") ||
+        t.includes("dollar") ||
+        t.includes("$");
+
+      const hasNumber =
+        /\d/.test(t) ||
+        [
+          "ten",
+          "fifteen",
+          "twenty",
+          "thirty",
+          "forty",
+          "forty-five",
+          "fifty",
+          "sixty",
+          "seventy",
+          "eighty",
+          "ninety",
+          "hundred"
+        ].some(word => t.includes(word));
+
+      return priceLanguage && hasNumber;
+    }
+  },
+
+  {
+    id: "CONFIRM_BOOKING",
+    title: "Confirm the tourist's booking",
+    expectedFunction: "CONFIRM",
+    expectedInformation: "BOOKING",
+
+    hints: [
+      "confirm • booking",
+      "Your booking is ______.",
+      "Your booking is confirmed."
+    ],
+
+    validate(text) {
+      const t = normalize(text);
+
+      return (
+        t.includes("booking is confirmed") ||
+        t.includes("booking has been confirmed") ||
+        t.includes("your tour is confirmed") ||
+        t.includes("reservation is confirmed") ||
+        (t.includes("confirm") && t.includes("booking"))
+      );
+    }
+  }
+];
+
+let currentTaskIndex = 0;
+let hintLevel = 0;
+let advanceAllowed = false;
+let completedTasks = [];
+
+const learnerInput = document.getElementById("learnerInput");
+const checkBtn = document.getElementById("checkBtn");
+const tryBtn = document.getElementById("tryBtn");
+const advanceBtn = document.getElementById("advanceBtn");
+const restartBtn = document.getElementById("restartBtn");
+
+const progress = document.getElementById("progress");
+const taskText = document.getElementById("taskText");
+const expectedText = document.getElementById("expectedText");
+const message = document.getElementById("message");
+const stateBox = document.getElementById("stateBox");
+const hintBox = document.getElementById("hintBox");
+const completionBox = document.getElementById("completionBox");
+
+function normalize(text) {
+  return text
+    .toLowerCase()
+    .trim()
+    .replace(/[?!.,]/g, "")
+    .replace(/\s+/g, " ");
+}
+
+function currentTask() {
+  return tasks[currentTaskIndex];
+}
+
+function setMessage(type, html) {
+  message.className = "message " + type;
+  message.innerHTML = html;
+}
+
+function render() {
+  if (currentTaskIndex >= tasks.length) {
+    showCompletion();
+    return;
+  }
+
+  const task = currentTask();
+
+  progress.textContent =
+    `Task ${currentTaskIndex + 1} of ${tasks.length}`;
+
+  taskText.textContent = task.title;
+
+  expectedText.innerHTML =
+    `<strong>Expected function:</strong> ${task.expectedFunction}<br>` +
+    `<strong>Expected information:</strong> ${task.expectedInformation}`;
+
+  stateBox.innerHTML =
+    `<strong>State Engine</strong><br>` +
+    `currentTask: ${task.id}<br>` +
+    `expectedFunction: ${task.expectedFunction}<br>` +
+    `expectedInformation: ${task.expectedInformation}<br>` +
+    `hintLevel: ${hintLevel}<br>` +
+    `advance: ${advanceAllowed}<br>` +
+    `completedTasks: ${completedTasks.length}/${tasks.length}`;
+
+  advanceBtn.disabled = !advanceAllowed;
+
+  if (hintLevel === 0) {
+    hintBox.style.display = "none";
+    hintBox.innerHTML = "";
+  } else {
+    hintBox.style.display = "block";
+
+    const displayLevel = Math.min(hintLevel, 3);
+
+    hintBox.innerHTML =
+      `💡 <strong>Hint ${displayLevel}</strong><br>` +
+      task.hints[displayLevel - 1];
+  }
+}
+
+function classifyUncertain(text) {
+  const t = normalize(text);
+
+  if (!t) return true;
+
+  const unusable = [
+    "...",
+    "?",
+    "um",
+    "uh",
+    "hmm",
+    "what",
+    "sorry"
+  ];
+
+  return unusable.includes(t);
+}
+
+function checkResponse() {
+  if (currentTaskIndex >= tasks.length) return;
+
+  const raw = learnerInput.value;
+  const text = normalize(raw);
+  const task = currentTask();
+
+  if (classifyUncertain(text)) {
+    advanceAllowed = false;
+
+    setMessage(
+      "uncertain",
+      "🟠 UNCERTAIN — the response is not clear enough to judge safely. " +
+      "Please say it again. Hint level does not increase."
+    );
+
+    render();
+    return;
+  }
+
+  const passed = task.validate(text);
+
+  if (passed) {
+    advanceAllowed = true;
+
+    setMessage(
+      "pass",
+      "🟢 PASS — current communication task achieved. " +
+      "ADVANCE is unlocked."
+    );
+
+    render();
+    return;
+  }
+
+  advanceAllowed = false;
+
+  if (hintLevel < 3) {
+    hintLevel++;
+  }
+
+  setMessage(
+    "support",
+    "🟡 NEEDS SUPPORT — current task has not been achieved. " +
+    "Stay on this task. Do not advance."
+  );
+
+  render();
+}
+
+function tryAgain() {
+  learnerInput.value = "";
+  learnerInput.focus();
+
+  advanceAllowed = false;
+
+  setMessage(
+    "waiting",
+    "⚪ WAITING — learner may try the same task again."
+  );
+
+  render();
+}
+
+function advanceTask() {
+  if (!advanceAllowed) {
+    setMessage(
+      "support",
+      "🔒 BLOCKED — the current task must PASS before ADVANCE."
+    );
+    return;
+  }
+
+  const finishedTask = currentTask();
+
+  completedTasks.push({
+    id: finishedTask.id,
+    hintLevelUsed: hintLevel
+  });
+
+  currentTaskIndex++;
+  hintLevel = 0;
+  advanceAllowed = false;
+
+  learnerInput.value = "";
+
+  if (currentTaskIndex >= tasks.length) {
+    showCompletion();
+    return;
+  }
+
+  setMessage(
+    "waiting",
+    "✅ Previous task completed. The State Engine has opened the next task."
+  );
+
+  render();
+  learnerInput.focus();
+}
+
+function showCompletion() {
+  progress.textContent = `Completed ${tasks.length} of ${tasks.length}`;
+  taskText.textContent = "All communication tasks completed";
+  expectedText.innerHTML = "";
+
+  learnerInput.disabled = true;
+  checkBtn.disabled = true;
+  tryBtn.disabled = true;
+  advanceBtn.disabled = true;
+
+  hintBox.style.display = "none";
+
+  setMessage(
+    "pass",
+    "🏁 SESSION COMPLETE — all required communication tasks were achieved."
+  );
+
+  const reportRows = completedTasks.map((item, index) => {
+    return `Task ${index + 1}: ${item.id} — highest hint used: ${item.hintLevelUsed}`;
+  }).join("<br>");
+
+  stateBox.innerHTML =
+    `<strong>Final State</strong><br>` +
+    `currentTask: COMPLETE<br>` +
+    `advance: false<br>` +
+    `completedTasks: ${completedTasks.length}/${tasks.length}`;
+
+  completionBox.style.display = "block";
+  completionBox.innerHTML =
+    `<strong>Prototype Learning Record</strong><br><br>` +
+    reportRows +
+    `<br><br>` +
+    `<strong>Important:</strong> this prototype records actual task completion ` +
+    `and hint use. It does not invent pronunciation or language scores.`;
+}
+
+function restart() {
+  currentTaskIndex = 0;
+  hintLevel = 0;
+  advanceAllowed = false;
+  completedTasks = [];
+
+  learnerInput.disabled = false;
+  checkBtn.disabled = false;
+  tryBtn.disabled = false;
+
+  learnerInput.value = "";
+
+  completionBox.style.display = "none";
+  completionBox.innerHTML = "";
+
+  setMessage(
+    "waiting",
+    "⚪ WAITING — complete the current communication task."
+  );
+
+  render();
+  learnerInput.focus();
+}
+
+checkBtn.addEventListener("click", checkResponse);
+tryBtn.addEventListener("click", tryAgain);
+advanceBtn.addEventListener("click", advanceTask);
+restartBtn.addEventListener("click", restart);
+
+learnerInput.addEventListener("keydown", function(event) {
+  if (event.key === "Enter") {
+    checkResponse();
+  }
+});
+
+render();
+</script>
+
+</body>
+</html>
