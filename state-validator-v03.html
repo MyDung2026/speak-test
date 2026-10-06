@@ -1,0 +1,1518 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<title>SPEAK State + Semantic Validator V0.3</title>
+
+<style>
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  padding: 35px 15px;
+  background: #f3f6fb;
+  font-family: Arial, Helvetica, sans-serif;
+  color: #10213f;
+}
+
+.container {
+  max-width: 760px;
+  margin: auto;
+  background: white;
+  padding: 28px;
+  border-radius: 18px;
+  box-shadow: 0 8px 25px rgba(0,0,0,0.08);
+}
+
+h1 {
+  margin-top: 0;
+  color: #08275d;
+}
+
+.subtitle {
+  line-height: 1.5;
+  margin-bottom: 22px;
+}
+
+.card {
+  background: #eaf2ff;
+  padding: 18px;
+  border-radius: 13px;
+  margin-bottom: 16px;
+}
+
+.card strong {
+  display: block;
+  margin-bottom: 5px;
+}
+
+.task-title {
+  font-size: 19px;
+  font-weight: bold;
+  margin: 8px 0;
+}
+
+.small {
+  font-size: 14px;
+}
+
+label {
+  font-weight: bold;
+  display: block;
+  margin: 12px 0 7px;
+}
+
+input {
+  width: 100%;
+  padding: 13px;
+  font-size: 16px;
+  border: 1px solid #b6c5db;
+  border-radius: 8px;
+}
+
+.buttons {
+  display: flex;
+  gap: 9px;
+  flex-wrap: wrap;
+  margin-top: 12px;
+}
+
+button {
+  border: none;
+  padding: 12px 17px;
+  border-radius: 8px;
+  font-weight: bold;
+  cursor: pointer;
+}
+
+#checkBtn {
+  background: #0db294;
+  color: white;
+}
+
+#tryBtn {
+  background: #687d9b;
+  color: white;
+}
+
+#advanceBtn {
+  background: #2868ee;
+  color: white;
+}
+
+#restartBtn {
+  background: #10275f;
+  color: white;
+}
+
+button:disabled {
+  opacity: 0.42;
+  cursor: not-allowed;
+}
+
+.message {
+  margin-top: 16px;
+  padding: 14px;
+  border-radius: 9px;
+  font-weight: bold;
+  line-height: 1.45;
+}
+
+.waiting {
+  background: #edf1f6;
+}
+
+.pass {
+  background: #d8f7df;
+}
+
+.support {
+  background: #fff2c8;
+}
+
+.uncertain {
+  background: #ffe1c5;
+}
+
+.state {
+  background: #dff1ff;
+  padding: 16px;
+  border-radius: 10px;
+  margin-top: 14px;
+  line-height: 1.55;
+}
+
+.hint {
+  background: #fff4d5;
+  border-left: 4px solid #ffb000;
+  padding: 14px;
+  border-radius: 8px;
+  margin-top: 12px;
+}
+
+.validator {
+  background: #f0eaff;
+  border-left: 4px solid #7546d8;
+  padding: 14px;
+  border-radius: 8px;
+  margin-top: 14px;
+  line-height: 1.5;
+}
+
+.complete {
+  background: #dff8e6;
+  padding: 18px;
+  border-radius: 11px;
+  margin-top: 15px;
+  line-height: 1.6;
+}
+
+.rules {
+  margin-top: 18px;
+  background: #f7f8fa;
+  padding: 16px;
+  border-radius: 10px;
+  line-height: 1.65;
+}
+
+code {
+  background: #eef1f5;
+  padding: 2px 5px;
+  border-radius: 4px;
+}
+</style>
+</head>
+
+<body>
+
+<div class="container">
+
+<h1>🧠 SPEAK State + Semantic Validator V0.3</h1>
+
+<div class="subtitle">
+This prototype tests whether a semantic validator can understand
+different learner responses while the State Engine keeps final control
+of task progression.
+</div>
+
+<div id="taskCard" class="card"></div>
+
+<label for="learnerInput">Learner transcript</label>
+
+<input
+  id="learnerInput"
+  type="text"
+  placeholder="Enter the learner response here"
+  autocomplete="off"
+/>
+
+<div class="buttons">
+
+<button id="checkBtn">
+✓ CHECK RESPONSE
+</button>
+
+<button id="tryBtn">
+↻ TRY AGAIN
+</button>
+
+<button id="advanceBtn" disabled>
+→ ADVANCE
+</button>
+
+<button id="restartBtn">
+⟳ RESTART
+</button>
+
+</div>
+
+<div id="message" class="message waiting">
+⚪ WAITING — complete the current communication task.
+</div>
+
+<div id="stateBox" class="state"></div>
+
+<div id="validatorBox" class="validator">
+<strong>Semantic Validator</strong><br>
+No response checked yet.
+</div>
+
+<div id="hintBox"></div>
+
+<div id="completionBox" class="complete" style="display:none;"></div>
+
+<div class="rules">
+
+<strong>V0.3 Control Rules</strong><br><br>
+
+🟢 <strong>PASS</strong> —
+the learner has achieved the required communication function
+and information goal.<br><br>
+
+🟡 <strong>NEEDS SUPPORT</strong> —
+the learner has not achieved the current task.
+Stay on the same task and provide progressive support.<br><br>
+
+🟠 <strong>UNCERTAIN</strong> —
+the response is empty, unclear, or cannot safely be interpreted.
+Ask the learner to try again.
+Do not increase the hint level.<br><br>
+
+🔒 <strong>STATE ENGINE OWNS ADVANCE</strong> —
+the validator may recommend PASS, but only the State Engine
+can unlock the next task.<br><br>
+
+🚫 <strong>NO KEYWORD-ONLY PASS</strong> —
+a relevant word alone is not enough.
+The response must perform the required communication function.
+
+</div>
+
+</div>
+
+<script>
+
+/* =========================================================
+   SPEAK STATE + SEMANTIC VALIDATOR V0.3
+   Prototype only.
+   No external AI API is used in this file.
+   ========================================================= */
+
+
+/* ---------------------------
+   TASK DEFINITIONS
+---------------------------- */
+
+const tasks = [
+
+{
+  id: "ASK_DESTINATION",
+
+  title:
+    "Ask the tourist where they would like to travel",
+
+  expectedFunction:
+    "ASK_QUESTION",
+
+  expectedInformation:
+    "DESTINATION",
+
+  hints: [
+    "ask • destination",
+    "Where would you like to ______?",
+    "Where would you like to travel?"
+  ]
+},
+
+{
+  id: "GIVE_ACTIVITY_INFORMATION",
+
+  title:
+    "Tell the tourist about activities included in the tour",
+
+  expectedFunction:
+    "GIVE_INFORMATION",
+
+  expectedInformation:
+    "ACTIVITY",
+
+  hints: [
+    "activities • sightseeing • local food",
+    "The tour includes ______.",
+    "The tour includes sightseeing and local food."
+  ]
+},
+
+{
+  id: "ASK_ACCOMMODATION",
+
+  title:
+    "Ask what kind of accommodation the tourist prefers",
+
+  expectedFunction:
+    "ASK_QUESTION",
+
+  expectedInformation:
+    "ACCOMMODATION",
+
+  hints: [
+    "ask • accommodation",
+    "What kind of ______ would you prefer?",
+    "What kind of accommodation would you prefer?"
+  ]
+},
+
+{
+  id: "ASK_DURATION",
+
+  title:
+    "Ask how long the tourist would like to stay",
+
+  expectedFunction:
+    "ASK_QUESTION",
+
+  expectedInformation:
+    "DURATION",
+
+  hints: [
+    "ask • duration",
+    "How many ______ would you like to stay?",
+    "How many nights would you like to stay?"
+  ]
+},
+
+{
+  id: "GIVE_PRICE_INFORMATION",
+
+  title:
+    "Tell the tourist the price",
+
+  expectedFunction:
+    "GIVE_INFORMATION",
+
+  expectedInformation:
+    "PRICE",
+
+  hints: [
+    "price • cost",
+    "The tour costs ______.",
+    "The tour costs 200 dollars."
+  ]
+},
+
+{
+  id: "CONFIRM_BOOKING",
+
+  title:
+    "Confirm the tourist's booking",
+
+  expectedFunction:
+    "CONFIRM",
+
+  expectedInformation:
+    "BOOKING",
+
+  hints: [
+    "confirm • booking",
+    "Your booking is ______.",
+    "Your booking is confirmed."
+  ]
+}
+
+];
+
+
+/* ---------------------------
+   STATE
+---------------------------- */
+
+let currentTaskIndex = 0;
+
+let hintLevel = 0;
+
+let advanceAllowed = false;
+
+let completedTasks = [];
+
+let highestHints = {};
+
+let lastValidation = null;
+
+
+/* ---------------------------
+   ELEMENTS
+---------------------------- */
+
+const taskCard =
+  document.getElementById("taskCard");
+
+const learnerInput =
+  document.getElementById("learnerInput");
+
+const checkBtn =
+  document.getElementById("checkBtn");
+
+const tryBtn =
+  document.getElementById("tryBtn");
+
+const advanceBtn =
+  document.getElementById("advanceBtn");
+
+const restartBtn =
+  document.getElementById("restartBtn");
+
+const message =
+  document.getElementById("message");
+
+const stateBox =
+  document.getElementById("stateBox");
+
+const validatorBox =
+  document.getElementById("validatorBox");
+
+const hintBox =
+  document.getElementById("hintBox");
+
+const completionBox =
+  document.getElementById("completionBox");
+
+
+/* ---------------------------
+   TEXT NORMALIZATION
+---------------------------- */
+
+function normalizeText(text) {
+
+  return text
+    .toLowerCase()
+    .replace(/[’']/g, "'")
+    .replace(/[.,!?;:]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+}
+
+
+/* ---------------------------
+   BASIC LANGUAGE DETECTION
+---------------------------- */
+
+function containsAny(text, phrases) {
+
+  return phrases.some(
+    phrase => text.includes(phrase)
+  );
+
+}
+
+
+function hasQuestionShape(original, normalized) {
+
+  if (original.trim().endsWith("?")) {
+    return true;
+  }
+
+  const starters = [
+    "where ",
+    "what ",
+    "which ",
+    "when ",
+    "why ",
+    "who ",
+    "how ",
+    "could you ",
+    "can you ",
+    "would you ",
+    "do you ",
+    "are you ",
+    "is there ",
+    "would the "
+  ];
+
+  return starters.some(
+    starter => normalized.startsWith(starter)
+  );
+
+}
+
+
+/* ---------------------------
+   INFORMATION DETECTORS
+---------------------------- */
+
+function detectsDestination(text) {
+
+  const destinationTerms = [
+    "travel",
+    "visit",
+    "go",
+    "destination",
+    "country",
+    "city",
+    "place",
+    "trip"
+  ];
+
+  return containsAny(
+    text,
+    destinationTerms
+  );
+
+}
+
+
+function detectsActivity(text) {
+
+  const activityTerms = [
+    "activity",
+    "activities",
+    "sightseeing",
+    "city tour",
+    "food tour",
+    "local food",
+    "market",
+    "markets",
+    "museum",
+    "museums",
+    "beach",
+    "shopping",
+    "visit",
+    "explore",
+    "temple",
+    "temples",
+    "cruise",
+    "hiking",
+    "swimming",
+    "cooking class"
+  ];
+
+  return containsAny(
+    text,
+    activityTerms
+  );
+
+}
+
+
+function detectsAccommodation(text) {
+
+  const accommodationTerms = [
+    "accommodation",
+    "hotel",
+    "hostel",
+    "resort",
+    "guesthouse",
+    "guest house",
+    "apartment",
+    "room",
+    "stay"
+  ];
+
+  return containsAny(
+    text,
+    accommodationTerms
+  );
+
+}
+
+
+function detectsDuration(text) {
+
+  const durationTerms = [
+    "how long",
+    "how many nights",
+    "how many days",
+    "night",
+    "nights",
+    "day",
+    "days",
+    "week",
+    "weeks",
+    "duration",
+    "stay"
+  ];
+
+  return containsAny(
+    text,
+    durationTerms
+  );
+
+}
+
+
+function detectsPrice(text) {
+
+  const priceTerms = [
+    "cost",
+    "costs",
+    "price",
+    "dollar",
+    "dollars",
+    "usd",
+    "$",
+    "per night",
+    "per person",
+    "total"
+  ];
+
+  const hasPriceWord =
+    containsAny(
+      text,
+      priceTerms
+    );
+
+  const hasNumber =
+    /\b\d+([.,]\d+)?\b/.test(text);
+
+  const numberWords = [
+    "ten",
+    "fifteen",
+    "twenty",
+    "thirty",
+    "forty",
+    "forty-five",
+    "fifty",
+    "sixty",
+    "seventy",
+    "eighty",
+    "ninety",
+    "hundred",
+    "two hundred",
+    "three hundred"
+  ];
+
+  const hasNumberWord =
+    containsAny(
+      text,
+      numberWords
+    );
+
+  return (
+    hasPriceWord &&
+    (hasNumber || hasNumberWord)
+  );
+
+}
+
+
+function detectsBookingConfirmation(text) {
+
+  const confirmationPatterns = [
+    "booking is confirmed",
+    "booking has been confirmed",
+    "reservation is confirmed",
+    "reservation has been confirmed",
+    "tour is confirmed",
+    "i confirm your booking",
+    "we confirm your booking",
+    "your booking is complete",
+    "your reservation is complete"
+  ];
+
+  return containsAny(
+    text,
+    confirmationPatterns
+  );
+
+}
+
+
+/* ---------------------------
+   FUNCTION DETECTION
+---------------------------- */
+
+function detectFunction(
+  original,
+  normalized
+) {
+
+  const question =
+    hasQuestionShape(
+      original,
+      normalized
+    );
+
+  const confirmation =
+    detectsBookingConfirmation(
+      normalized
+    );
+
+  if (confirmation) {
+    return "CONFIRM";
+  }
+
+  if (question) {
+    return "ASK_QUESTION";
+  }
+
+  return "GIVE_INFORMATION";
+}
+
+
+/* ---------------------------
+   INFORMATION DETECTION
+---------------------------- */
+
+function detectInformation(
+  expectedInformation,
+  normalized
+) {
+
+  switch (expectedInformation) {
+
+    case "DESTINATION":
+      return detectsDestination(
+        normalized
+      );
+
+    case "ACTIVITY":
+      return detectsActivity(
+        normalized
+      );
+
+    case "ACCOMMODATION":
+      return detectsAccommodation(
+        normalized
+      );
+
+    case "DURATION":
+      return detectsDuration(
+        normalized
+      );
+
+    case "PRICE":
+      return detectsPrice(
+        normalized
+      );
+
+    case "BOOKING":
+      return detectsBookingConfirmation(
+        normalized
+      );
+
+    default:
+      return false;
+  }
+
+}
+
+
+/* ---------------------------
+   SHORT / UNCLEAR RESPONSES
+---------------------------- */
+
+function isUncertainResponse(
+  normalized
+) {
+
+  if (!normalized) {
+    return true;
+  }
+
+  const uncertainTerms = [
+    "um",
+    "uh",
+    "hmm",
+    "what",
+    "sorry",
+    "repeat",
+    "again"
+  ];
+
+  if (
+    uncertainTerms.includes(normalized)
+  ) {
+    return true;
+  }
+
+  return false;
+}
+
+
+/* ---------------------------
+   SEMANTIC VALIDATOR
+---------------------------- */
+
+function validateResponse(
+  original,
+  task
+) {
+
+  const normalized =
+    normalizeText(original);
+
+  if (
+    isUncertainResponse(normalized)
+  ) {
+
+    return {
+      result: "UNCERTAIN",
+      detectedFunction: "UNCLEAR",
+      informationMatched: false,
+      reason:
+        "The response is empty or too unclear to evaluate safely."
+    };
+
+  }
+
+
+  const detectedFunction =
+    detectFunction(
+      original,
+      normalized
+    );
+
+
+  const informationMatched =
+    detectInformation(
+      task.expectedInformation,
+      normalized
+    );
+
+
+  const functionMatched =
+    detectedFunction ===
+    task.expectedFunction;
+
+
+  if (
+    functionMatched &&
+    informationMatched
+  ) {
+
+    return {
+      result: "PASS",
+      detectedFunction,
+      informationMatched: true,
+      reason:
+        "The response performs the required communication function and addresses the required information."
+    };
+
+  }
+
+
+  let reason = "";
+
+
+  if (
+    !functionMatched &&
+    informationMatched
+  ) {
+
+    reason =
+      "The response is related to the correct information, but it performs the wrong communication function.";
+
+  }
+
+  else if (
+    functionMatched &&
+    !informationMatched
+  ) {
+
+    reason =
+      "The communication function is appropriate, but the required information has not been expressed clearly.";
+
+  }
+
+  else {
+
+    reason =
+      "The response does not yet perform the required communication function or provide the required information.";
+
+  }
+
+
+  return {
+    result: "NEEDS_SUPPORT",
+    detectedFunction,
+    informationMatched,
+    reason
+  };
+
+}
+
+
+/* ---------------------------
+   MESSAGE
+---------------------------- */
+
+function setMessage(
+  type,
+  text
+) {
+
+  message.className =
+    "message " + type;
+
+  message.innerHTML =
+    text;
+
+}
+
+
+/* ---------------------------
+   RENDER
+---------------------------- */
+
+function render() {
+
+  if (
+    currentTaskIndex >=
+    tasks.length
+  ) {
+
+    renderCompletion();
+    return;
+  }
+
+
+  const task =
+    tasks[currentTaskIndex];
+
+
+  taskCard.innerHTML = `
+    <strong>
+      Scenario: Booking a Tour
+    </strong>
+
+    Student role: Travel Agent<br>
+    AI role: Tourist<br>
+    Task ${currentTaskIndex + 1} of ${tasks.length}
+
+    <div class="task-title">
+      ${task.title}
+    </div>
+
+    <div class="small">
+      Expected function:
+      ${task.expectedFunction}
+      <br>
+
+      Expected information:
+      ${task.expectedInformation}
+    </div>
+  `;
+
+
+  stateBox.innerHTML = `
+    <strong>State Engine</strong><br>
+
+    currentTask:
+    ${task.id}
+    <br>
+
+    expectedFunction:
+    ${task.expectedFunction}
+    <br>
+
+    expectedInformation:
+    ${task.expectedInformation}
+    <br>
+
+    hintLevel:
+    ${hintLevel}
+    <br>
+
+    advance:
+    ${advanceAllowed}
+    <br>
+
+    completedTasks:
+    ${completedTasks.length}/${tasks.length}
+  `;
+
+
+  advanceBtn.disabled =
+    !advanceAllowed;
+
+
+  if (hintLevel > 0) {
+
+    const hintIndex =
+      Math.min(
+        hintLevel - 1,
+        task.hints.length - 1
+      );
+
+    hintBox.innerHTML = `
+      <div class="hint">
+
+        💡 <strong>
+        Hint ${hintLevel}
+        </strong>
+
+        <br>
+
+        ${task.hints[hintIndex]}
+
+      </div>
+    `;
+
+  }
+
+  else {
+
+    hintBox.innerHTML = "";
+
+  }
+
+}
+
+
+/* ---------------------------
+   CHECK RESPONSE
+---------------------------- */
+
+function checkResponse() {
+
+  if (
+    currentTaskIndex >=
+    tasks.length
+  ) {
+    return;
+  }
+
+
+  const task =
+    tasks[currentTaskIndex];
+
+
+  const learnerText =
+    learnerInput.value.trim();
+
+
+  const validation =
+    validateResponse(
+      learnerText,
+      task
+    );
+
+
+  lastValidation =
+    validation;
+
+
+  validatorBox.innerHTML = `
+    <strong>
+      Semantic Validator
+    </strong>
+    <br><br>
+
+    Result:
+    <strong>
+      ${validation.result}
+    </strong>
+    <br>
+
+    Detected function:
+    ${validation.detectedFunction}
+    <br>
+
+    Required function:
+    ${task.expectedFunction}
+    <br>
+
+    Required information matched:
+    ${validation.informationMatched}
+    <br><br>
+
+    <strong>Reason:</strong>
+    ${validation.reason}
+  `;
+
+
+  if (
+    validation.result ===
+    "UNCERTAIN"
+  ) {
+
+    advanceAllowed = false;
+
+    setMessage(
+      "uncertain",
+      "🟠 UNCERTAIN — I didn't catch that clearly. Please try again. Hint level does not increase."
+    );
+
+    render();
+
+    return;
+  }
+
+
+  if (
+    validation.result ===
+    "NEEDS_SUPPORT"
+  ) {
+
+    advanceAllowed = false;
+
+
+    if (
+      hintLevel <
+      task.hints.length
+    ) {
+
+      hintLevel += 1;
+
+    }
+
+
+    highestHints[task.id] =
+      Math.max(
+        highestHints[task.id] || 0,
+        hintLevel
+      );
+
+
+    setMessage(
+      "support",
+      "🟡 NEEDS SUPPORT — current task has not been achieved. Stay on this task. Do not advance."
+    );
+
+
+    render();
+
+    return;
+  }
+
+
+  if (
+    validation.result ===
+    "PASS"
+  ) {
+
+    /*
+      IMPORTANT:
+      Validator recommends PASS.
+      State Engine explicitly unlocks advance here.
+    */
+
+    advanceAllowed = true;
+
+
+    highestHints[task.id] =
+      Math.max(
+        highestHints[task.id] || 0,
+        hintLevel
+      );
+
+
+    setMessage(
+      "pass",
+      "🟢 PASS — semantic requirement achieved. State Engine has unlocked ADVANCE."
+    );
+
+
+    render();
+
+  }
+
+}
+
+
+/* ---------------------------
+   TRY AGAIN
+---------------------------- */
+
+function tryAgain() {
+
+  learnerInput.value = "";
+
+  learnerInput.focus();
+
+  advanceAllowed = false;
+
+  lastValidation = null;
+
+  validatorBox.innerHTML = `
+    <strong>
+      Semantic Validator
+    </strong>
+    <br>
+
+    Waiting for another learner response.
+  `;
+
+  setMessage(
+    "waiting",
+    "⚪ WAITING — try the same communication task again."
+  );
+
+  render();
+
+}
+
+
+/* ---------------------------
+   ADVANCE
+---------------------------- */
+
+function advanceTask() {
+
+  if (
+    !advanceAllowed
+  ) {
+
+    return;
+
+  }
+
+
+  const task =
+    tasks[currentTaskIndex];
+
+
+  completedTasks.push({
+    id: task.id,
+    highestHint:
+      highestHints[task.id] || 0
+  });
+
+
+  currentTaskIndex += 1;
+
+  hintLevel = 0;
+
+  advanceAllowed = false;
+
+  lastValidation = null;
+
+  learnerInput.value = "";
+
+
+  validatorBox.innerHTML = `
+    <strong>
+      Semantic Validator
+    </strong>
+    <br>
+
+    Previous task completed.
+    Waiting for the next learner response.
+  `;
+
+
+  if (
+    currentTaskIndex <
+    tasks.length
+  ) {
+
+    setMessage(
+      "waiting",
+      "✅ Previous task completed. State Engine has opened the next task."
+    );
+
+  }
+
+
+  render();
+
+  learnerInput.focus();
+
+}
+
+
+/* ---------------------------
+   COMPLETION
+---------------------------- */
+
+function renderCompletion() {
+
+  taskCard.innerHTML = `
+    <strong>
+      Scenario: Booking a Tour
+    </strong>
+
+    Student role: Travel Agent<br>
+    AI role: Tourist<br>
+    Completed ${tasks.length} of ${tasks.length}
+
+    <div class="task-title">
+      All communication tasks completed
+    </div>
+  `;
+
+
+  learnerInput.disabled = true;
+
+  checkBtn.disabled = true;
+
+  tryBtn.disabled = true;
+
+  advanceBtn.disabled = true;
+
+
+  setMessage(
+    "pass",
+    "🏁 SESSION COMPLETE — all required communication tasks were achieved."
+  );
+
+
+  stateBox.innerHTML = `
+    <strong>
+      Final State
+    </strong>
+    <br>
+
+    currentTask:
+    COMPLETE
+    <br>
+
+    advance:
+    false
+    <br>
+
+    completedTasks:
+    ${completedTasks.length}/${tasks.length}
+  `;
+
+
+  validatorBox.innerHTML = `
+    <strong>
+      Semantic Validator
+    </strong>
+    <br>
+
+    Session validation complete.
+  `;
+
+
+  hintBox.innerHTML = "";
+
+
+  let rows = "";
+
+
+  completedTasks.forEach(
+    (item, index) => {
+
+      rows +=
+        `Task ${index + 1}: ${item.id}
+        — highest hint used:
+        ${item.highestHint}
+        <br>`;
+
+    }
+  );
+
+
+  completionBox.style.display =
+    "block";
+
+
+  completionBox.innerHTML = `
+    <strong>
+      Prototype Learning Record
+    </strong>
+
+    <br><br>
+
+    ${rows}
+
+    <br>
+
+    <strong>Important:</strong>
+    this prototype records actual task completion
+    and hint use.
+
+    It does not invent pronunciation,
+    fluency, or language scores.
+  `;
+
+}
+
+
+/* ---------------------------
+   RESTART
+---------------------------- */
+
+function restart() {
+
+  currentTaskIndex = 0;
+
+  hintLevel = 0;
+
+  advanceAllowed = false;
+
+  completedTasks = [];
+
+  highestHints = {};
+
+  lastValidation = null;
+
+
+  learnerInput.disabled = false;
+
+  checkBtn.disabled = false;
+
+  tryBtn.disabled = false;
+
+  learnerInput.value = "";
+
+
+  completionBox.style.display =
+    "none";
+
+  completionBox.innerHTML = "";
+
+
+  validatorBox.innerHTML = `
+    <strong>
+      Semantic Validator
+    </strong>
+    <br>
+
+    No response checked yet.
+  `;
+
+
+  setMessage(
+    "waiting",
+    "⚪ WAITING — complete the current communication task."
+  );
+
+
+  render();
+
+  learnerInput.focus();
+
+}
+
+
+/* ---------------------------
+   EVENTS
+---------------------------- */
+
+checkBtn.addEventListener(
+  "click",
+  checkResponse
+);
+
+
+tryBtn.addEventListener(
+  "click",
+  tryAgain
+);
+
+
+advanceBtn.addEventListener(
+  "click",
+  advanceTask
+);
+
+
+restartBtn.addEventListener(
+  "click",
+  restart
+);
+
+
+learnerInput.addEventListener(
+  "keydown",
+  function(event) {
+
+    if (
+      event.key === "Enter"
+    ) {
+
+      checkResponse();
+
+    }
+
+  }
+);
+
+
+/* ---------------------------
+   START
+---------------------------- */
+
+render();
+
+</script>
+
+</body>
+</html>
