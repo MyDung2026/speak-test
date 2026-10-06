@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SPEAK Speech Quality Gate</title>
+
+<style>
+*{box-sizing:border-box}
+body{
+  margin:0;padding:25px 15px;
+  font-family:Arial,sans-serif;
+  background:#f3f6fb;color:#172033
+}
+.card{
+  max-width:780px;margin:auto;background:white;
+  padding:28px;border-radius:18px;
+  box-shadow:0 8px 28px rgba(0,0,0,.08)
+}
+h1{margin-top:0}
+.task{
+  background:#edf3ff;padding:16px;
+  border-radius:10px;font-size:19px;margin:18px 0
+}
+button{
+  border:0;border-radius:9px;padding:12px 16px;
+  margin:5px;font-weight:bold;cursor:pointer
+}
+#start{background:#2563eb;color:white}
+#stop{background:#ef9a9a;color:white}
+#send{background:#059669;color:white}
+#again{background:#64748b;color:white}
+button:disabled{opacity:.45;cursor:not-allowed}
+textarea{
+  width:100%;min-height:80px;padding:12px;
+  font-size:17px;border:1px solid #ccd3df;
+  border-radius:10px
+}
+.gate{
+  margin-top:20px;padding:18px;
+  border-radius:12px;font-size:18px;
+  font-weight:bold
+}
+.clear{background:#e9f9ef}
+.uncertain{background:#fff6d8}
+.noSpeech{background:#eef1f5}
+.info{
+  margin-top:20px;background:#f7f8fa;
+  padding:15px;border-radius:10px;line-height:1.5
+}
+.small{
+  margin-top:18px;font-size:12px;
+  color:#687386;line-height:1.5
+}
+</style>
+</head>
+
+<body>
+<div class="card">
+
+<h1>🛡️ SPEAK Speech Quality Gate</h1>
+
+<p>
+This prototype tests whether a transcript is usable
+before it reaches the learning validator.
+</p>
+
+<div class="task">
+<strong>Practice task:</strong><br>
+Tell the travel agent where you would like to go.<br><br>
+Example: <em>I'd like to visit Japan.</em>
+</div>
+
+<button id="start">🎤 SPEAK</button>
+<button id="stop" disabled>■ STOP</button>
+<button id="send" disabled>☁ CHECK SPEECH</button>
+<button id="again">↻ SAY AGAIN</button>
+
+<p id="status"><strong>Status:</strong> Ready</p>
+
+<label><strong>Transcript</strong></label>
+<textarea id="transcript" readonly></textarea>
+
+<div id="gateBox" class="gate noSpeech">
+⚪ NO SPEECH — waiting for speech
+</div>
+
+<div class="info">
+<strong>Gate rule for this prototype</strong><br><br>
+
+🟢 <strong>CLEAR</strong> — a usable transcript was returned
+and contains enough speech to continue to semantic validation.<br><br>
+
+🟡 <strong>UNCERTAIN</strong> — transcription failed, is extremely
+short, or contains no usable words. Ask the learner to say it again.
+No penalty and no hint increase.<br><br>
+
+⚪ <strong>NO SPEECH</strong> — nothing has been submitted yet.<br><br>
+
+<strong>Important:</strong> CLEAR does not mean the learner is correct.
+It only means the transcript is usable enough to send to the next
+validation layer.
+</div>
+
+<div class="small">
+Prototype only. Audio is recorded temporarily in the browser and sent
+to the speech backend for transcription. This page does not intentionally
+save the audio recording. Do not use personal information during testing.
+</div>
+
+</div>
+
+<script>
+const API =
+  "https://speak-test-api.ptmdung.workers.dev/transcribe";
+
+let recorder = null;
+let chunks = [];
+let blob = null;
+let stream = null;
+
+const start = document.getElementById("start");
+const stop = document.getElementById("stop");
+const send = document.getElementById("send");
+const again = document.getElementById("again");
+const status = document.getElementById("status");
+const transcript = document.getElementById("transcript");
+const gateBox = document.getElementById("gateBox");
+
+function setGate(type, message) {
+  gateBox.className = "gate " + type;
+  gateBox.textContent = message;
+}
+
+function reset() {
+  blob = null;
+  transcript.value = "";
+  send.disabled = true;
+  stop.disabled = true;
+  start.disabled = false;
+
+  status.innerHTML =
+    "<strong>Status:</strong> Ready";
+
+  setGate(
+    "noSpeech",
+    "⚪ NO SPEECH — waiting for speech"
+  );
+}
+
+function mimeType() {
+  const types = [
+    "audio/webm;codecs=opus",
+    "audio/webm",
+    "audio/ogg;codecs=opus",
+    "audio/ogg"
+  ];
+
+  for (const type of types) {
+    if (
+      window.MediaRecorder &&
+      MediaRecorder.isTypeSupported(type)
+    ) return type;
+  }
+
+  return "";
+}
+
+start.onclick = async () => {
+  try {
+    if (!stream) {
+      stream =
+        await navigator.mediaDevices.getUserMedia({
+          audio:true
+        });
+    }
+
+    chunks = [];
+    transcript.value = "";
+
+    const type = mimeType();
+
+    recorder =
+      new MediaRecorder(
+        stream,
+        type ? {mimeType:type} : undefined
+      );
+
+    recorder.ondataavailable = e => {
+      if (e.data && e.data.size > 0) {
+        chunks.push(e.data);
+      }
+    };
+
+    recorder.onstop = () => {
+      blob =
+        new Blob(
+          chunks,
+          {
+            type:
+              recorder.mimeType ||
+              type ||
+              "audio/webm"
+          }
+        );
+
+      status.innerHTML =
+        "<strong>Status:</strong> Recording ready";
+
+      start.disabled = false;
+      stop.disabled = true;
+      send.disabled = false;
+    };
+
+    recorder.start();
+
+    start.disabled = true;
+    stop.disabled = false;
+    send.disabled = true;
+
+    status.innerHTML =
+      "<strong>Status:</strong> Listening...";
+
+  } catch(e) {
+    status.innerHTML =
+      "<strong>Status:</strong> Microphone error";
+  }
+};
+
+stop.onclick = () => {
+  if (
+    recorder &&
+    recorder.state === "recording"
+  ) {
+    recorder.stop();
+
+    status.innerHTML =
+      "<strong>Status:</strong> Processing...";
+  }
+};
+
+send.onclick = async () => {
+  if (!blob) return;
+
+  send.disabled = true;
+
+  status.innerHTML =
+    "<strong>Status:</strong> Checking speech...";
+
+  try {
+    const response =
+      await fetch(
+        API,
+        {
+          method:"POST",
+          headers:{
+            "Content-Type":
+              blob.type || "audio/webm"
+          },
+          body:blob
+        }
+      );
+
+    const data = await response.json();
+
+    if (!response.ok || !data.ok) {
+      throw new Error(
+        data.error || "Transcription failed"
+      );
+    }
+
+    const text =
+      String(data.transcript || "").trim();
+
+    transcript.value = text;
+
+    if (!text) {
+      setGate(
+        "uncertain",
+        "🟡 UNCERTAIN — I didn't catch that clearly. Please say it again."
+      );
+    }
+    else {
+      const words =
+        text
+          .replace(/[^\p{L}\p{N}'-]+/gu," ")
+          .trim()
+          .split(/\s+/)
+          .filter(Boolean);
+
+      if (words.length < 2) {
+        setGate(
+          "uncertain",
+          "🟡 UNCERTAIN — I didn't catch that clearly. Please say it again."
+        );
+      }
+      else {
+        setGate(
+          "clear",
+          "🟢 CLEAR — transcript can now go to the semantic validator."
+        );
+      }
+    }
+
+    status.innerHTML =
+      "<strong>Status:</strong> Complete";
+
+  } catch(e) {
+    transcript.value = "";
+
+    setGate(
+      "uncertain",
+      "🟡 UNCERTAIN — speech could not be verified. Please say it again."
+    );
+
+    status.innerHTML =
+      "<strong>Status:</strong> Transcription unavailable";
+  }
+};
+
+again.onclick = reset;
+
+reset();
+</script>
+
+</body>
+</html>
