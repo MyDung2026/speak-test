@@ -1,0 +1,726 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<title>SPEAK Hybrid Speech Test</title>
+
+<style>
+body{
+    font-family:Arial,sans-serif;
+    background:#f4f7fb;
+    margin:0;
+    padding:30px;
+    color:#172033;
+}
+
+.container{
+    max-width:720px;
+    margin:auto;
+    background:white;
+    padding:28px;
+    border-radius:18px;
+    box-shadow:0 8px 25px rgba(0,0,0,.08);
+}
+
+h1{
+    margin-top:0;
+}
+
+.task{
+    background:#eaf1ff;
+    padding:16px;
+    border-radius:12px;
+    margin-bottom:18px;
+}
+
+button{
+    border:none;
+    border-radius:8px;
+    padding:12px 16px;
+    margin:5px 5px 5px 0;
+    font-weight:bold;
+    cursor:pointer;
+}
+
+#startBtn{
+    background:#2563eb;
+    color:white;
+}
+
+#stopBtn{
+    background:#f3a6a6;
+    color:white;
+}
+
+#checkBtn{
+    background:#63c5a5;
+    color:white;
+}
+
+#geminiBtn{
+    background:#7c3aed;
+    color:white;
+}
+
+#againBtn{
+    background:#64748b;
+    color:white;
+}
+
+button:disabled{
+    opacity:.45;
+    cursor:not-allowed;
+}
+
+.box{
+    border:1px solid #cbd5e1;
+    border-radius:10px;
+    padding:14px;
+    min-height:55px;
+    margin-top:6px;
+    white-space:pre-wrap;
+}
+
+.label{
+    font-weight:bold;
+    margin-top:18px;
+}
+
+.state{
+    margin-top:18px;
+    padding:14px;
+    border-radius:10px;
+    font-weight:bold;
+}
+
+.no-speech{
+    background:#eef2f7;
+}
+
+.clear{
+    background:#dcfce7;
+}
+
+.uncertain{
+    background:#fef3c7;
+}
+
+.gemini{
+    background:#ede9fe;
+}
+
+.validator{
+    background:#e0f2fe;
+}
+
+.rule{
+    margin-top:22px;
+    background:#f8fafc;
+    padding:16px;
+    border-radius:12px;
+    line-height:1.5;
+}
+
+.small{
+    font-size:12px;
+    color:#64748b;
+    margin-top:24px;
+}
+
+select{
+    padding:10px;
+    border-radius:8px;
+    border:1px solid #cbd5e1;
+    width:100%;
+    font-size:15px;
+}
+</style>
+</head>
+
+<body>
+
+<div class="container">
+
+<h1>🎤 SPEAK Hybrid Speech Test</h1>
+
+<p>
+This prototype tests the hybrid speech layer before the
+AI English Role-Play learning validator.
+</p>
+
+<div class="task">
+
+<strong>Test sentence</strong>
+
+<select id="sentenceSelect">
+<option>I'd like to visit Japan.</option>
+<option>I'd prefer France.</option>
+<option>I'd like to go sightseeing.</option>
+<option>How much is the room per night?</option>
+<option>It costs forty-five dollars.</option>
+<option>It costs fifteen dollars.</option>
+<option>I'd like a double room.</option>
+<option>I want go Japan.</option>
+</select>
+
+<p>
+Speak naturally. Do not deliberately slow down or exaggerate pronunciation.
+</p>
+
+</div>
+
+<button id="startBtn">🎤 SPEAK</button>
+<button id="stopBtn" disabled>■ STOP</button>
+<button id="checkBtn" disabled>✓ CHECK</button>
+<button id="geminiBtn" disabled>☁ VERIFY WITH GEMINI</button>
+<button id="againBtn">↻ SAY AGAIN</button>
+
+<div class="label">Browser transcript</div>
+<div id="browserTranscript" class="box"></div>
+
+<div class="label">Gemini transcript</div>
+<div id="geminiTranscript" class="box"></div>
+
+<div class="label">Final transcript</div>
+<div id="finalTranscript" class="box"></div>
+
+<div id="state" class="state no-speech">
+⚪ NO SPEECH — waiting for speech
+</div>
+
+<div id="validator" class="state validator">
+Validator: waiting
+</div>
+
+<div class="rule">
+
+<strong>Hybrid rule</strong><br><br>
+
+🟢 CLEAR — Browser transcript is usable enough to continue.<br><br>
+
+🟡 UNCERTAIN — Transcript is missing, extremely short, or unreliable.
+The learner should say it again or the system may request Gemini verification.<br><br>
+
+☁ GEMINI — used only as a secondary verification layer, not for every utterance.<br><br>
+
+<strong>Important:</strong>
+CLEAR does not mean the learner is correct.
+It only means the transcript can move to the semantic validator.
+
+</div>
+
+<div class="small">
+Prototype only. Browser speech recognition may send speech to the browser
+provider's speech service. Gemini verification sends recorded audio through
+the SPEAK backend to the configured transcription provider.
+Do not use real personal information during testing.
+</div>
+
+</div>
+
+<script>
+
+const WORKER_URL =
+"https://speak-test-api.ptmdung.workers.dev/transcribe";
+
+const startBtn =
+document.getElementById("startBtn");
+
+const stopBtn =
+document.getElementById("stopBtn");
+
+const checkBtn =
+document.getElementById("checkBtn");
+
+const geminiBtn =
+document.getElementById("geminiBtn");
+
+const againBtn =
+document.getElementById("againBtn");
+
+const browserTranscript =
+document.getElementById("browserTranscript");
+
+const geminiTranscript =
+document.getElementById("geminiTranscript");
+
+const finalTranscript =
+document.getElementById("finalTranscript");
+
+const state =
+document.getElementById("state");
+
+const validator =
+document.getElementById("validator");
+
+let recognition = null;
+
+let mediaRecorder = null;
+
+let audioChunks = [];
+
+let audioBlob = null;
+
+let browserText = "";
+
+let stream = null;
+
+
+// ------------------------------------------
+// Browser Speech Recognition
+// ------------------------------------------
+
+const SpeechRecognition =
+window.SpeechRecognition ||
+window.webkitSpeechRecognition;
+
+if(SpeechRecognition){
+
+    recognition =
+    new SpeechRecognition();
+
+    recognition.lang =
+    "en-US";
+
+    recognition.interimResults =
+    true;
+
+    recognition.continuous =
+    false;
+
+    recognition.maxAlternatives =
+    3;
+
+    recognition.onresult =
+    function(event){
+
+        let text = "";
+
+        for(
+            let i = event.resultIndex;
+            i < event.results.length;
+            i++
+        ){
+
+            text +=
+            event.results[i][0].transcript;
+
+        }
+
+        browserText =
+        text.trim();
+
+        browserTranscript.textContent =
+        browserText;
+
+    };
+
+}
+
+
+// ------------------------------------------
+// Start recording
+// ------------------------------------------
+
+startBtn.onclick =
+async function(){
+
+    resetResults();
+
+    try{
+
+        stream =
+        await navigator.mediaDevices.getUserMedia({
+            audio:true
+        });
+
+        let options = {};
+
+        if(
+            MediaRecorder.isTypeSupported(
+                "audio/webm;codecs=opus"
+            )
+        ){
+
+            options.mimeType =
+            "audio/webm;codecs=opus";
+
+        }
+
+        mediaRecorder =
+        new MediaRecorder(
+            stream,
+            options
+        );
+
+        audioChunks = [];
+
+        mediaRecorder.ondataavailable =
+        function(event){
+
+            if(
+                event.data &&
+                event.data.size > 0
+            ){
+
+                audioChunks.push(
+                    event.data
+                );
+
+            }
+
+        };
+
+        mediaRecorder.onstop =
+        function(){
+
+            const mime =
+            mediaRecorder.mimeType ||
+            "audio/webm";
+
+            audioBlob =
+            new Blob(
+                audioChunks,
+                {
+                    type:mime
+                }
+            );
+
+            stream
+            .getTracks()
+            .forEach(
+                track =>
+                track.stop()
+            );
+
+            checkBtn.disabled =
+            false;
+
+            geminiBtn.disabled =
+            false;
+
+        };
+
+        mediaRecorder.start();
+
+        if(recognition){
+
+            try{
+                recognition.start();
+            }
+            catch(e){}
+
+        }
+
+        startBtn.disabled =
+        true;
+
+        stopBtn.disabled =
+        false;
+
+        state.className =
+        "state no-speech";
+
+        state.textContent =
+        "🔵 LISTENING — speak now";
+
+    }
+    catch(error){
+
+        state.className =
+        "state uncertain";
+
+        state.textContent =
+        "🟡 UNCERTAIN — microphone could not be started.";
+
+    }
+
+};
+
+
+// ------------------------------------------
+// Stop
+// ------------------------------------------
+
+stopBtn.onclick =
+function(){
+
+    if(
+        mediaRecorder &&
+        mediaRecorder.state !== "inactive"
+    ){
+
+        mediaRecorder.stop();
+
+    }
+
+    if(recognition){
+
+        try{
+            recognition.stop();
+        }
+        catch(e){}
+
+    }
+
+    startBtn.disabled =
+    false;
+
+    stopBtn.disabled =
+    true;
+
+    state.className =
+    "state no-speech";
+
+    state.textContent =
+    "⚪ Recording complete — press CHECK";
+
+};
+
+
+// ------------------------------------------
+// Local quality gate
+// ------------------------------------------
+
+checkBtn.onclick =
+function(){
+
+    const text =
+    browserText.trim();
+
+    finalTranscript.textContent =
+    text;
+
+    if(!text){
+
+        setUncertain(
+            "No usable browser transcript was returned."
+        );
+
+        return;
+
+    }
+
+    const words =
+    text
+    .split(/\s+/)
+    .filter(Boolean);
+
+    if(words.length < 2){
+
+        setUncertain(
+            "Transcript is too short to verify."
+        );
+
+        return;
+
+    }
+
+    state.className =
+    "state clear";
+
+    state.textContent =
+    "🟢 CLEAR — browser transcript can go to the semantic validator.";
+
+    validator.textContent =
+    "Validator input: " + text;
+
+};
+
+
+// ------------------------------------------
+// Gemini secondary verification
+// ------------------------------------------
+
+geminiBtn.onclick =
+async function(){
+
+    if(!audioBlob){
+
+        setUncertain(
+            "No audio recording is available."
+        );
+
+        return;
+
+    }
+
+    state.className =
+    "state gemini";
+
+    state.textContent =
+    "☁ GEMINI — secondary verification in progress...";
+
+    geminiBtn.disabled =
+    true;
+
+    try{
+
+        const response =
+        await fetch(
+            WORKER_URL,
+            {
+                method:"POST",
+                headers:{
+                    "Content-Type":
+                    audioBlob.type ||
+                    "audio/webm"
+                },
+                body:audioBlob
+            }
+        );
+
+        let data = null;
+
+        try{
+
+            data =
+            await response.json();
+
+        }
+        catch(e){
+
+            data = null;
+
+        }
+
+        if(
+            !response.ok ||
+            !data ||
+            !data.ok ||
+            !data.transcript
+        ){
+
+            setUncertain(
+                "Gemini verification is unavailable. Please say it again."
+            );
+
+            geminiTranscript.textContent =
+            data && data.error
+            ? data.error
+            : "Verification unavailable";
+
+            return;
+
+        }
+
+        const text =
+        String(
+            data.transcript
+        ).trim();
+
+        geminiTranscript.textContent =
+        text;
+
+        finalTranscript.textContent =
+        text;
+
+        if(!text){
+
+            setUncertain(
+                "Gemini returned no usable transcript."
+            );
+
+            return;
+
+        }
+
+        state.className =
+        "state clear";
+
+        state.textContent =
+        "🟢 CLEAR — Gemini verification returned a usable transcript.";
+
+        validator.textContent =
+        "Validator input: " + text;
+
+    }
+    catch(error){
+
+        setUncertain(
+            "Gemini verification could not be completed. Please say it again."
+        );
+
+    }
+    finally{
+
+        geminiBtn.disabled =
+        false;
+
+    }
+
+};
+
+
+// ------------------------------------------
+// Helpers
+// ------------------------------------------
+
+function setUncertain(message){
+
+    state.className =
+    "state uncertain";
+
+    state.textContent =
+    "🟡 UNCERTAIN — " +
+    message;
+
+    validator.textContent =
+    "Validator: BLOCKED — do not judge the learner.";
+
+}
+
+
+function resetResults(){
+
+    browserText = "";
+
+    audioBlob = null;
+
+    browserTranscript.textContent =
+    "";
+
+    geminiTranscript.textContent =
+    "";
+
+    finalTranscript.textContent =
+    "";
+
+    validator.textContent =
+    "Validator: waiting";
+
+    state.className =
+    "state no-speech";
+
+    state.textContent =
+    "⚪ NO SPEECH — waiting for speech";
+
+    checkBtn.disabled =
+    true;
+
+    geminiBtn.disabled =
+    true;
+
+}
+
+
+againBtn.onclick =
+function(){
+
+    resetResults();
+
+    startBtn.disabled =
+    false;
+
+    stopBtn.disabled =
+    true;
+
+};
+
+
+</script>
+
+</body>
+</html>
