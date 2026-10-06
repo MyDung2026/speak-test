@@ -1,0 +1,666 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SPEAK Semantic Validator V0.1</title>
+
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      padding: 28px 16px;
+      font-family: Arial, Helvetica, sans-serif;
+      background: #f3f6fb;
+      color: #172033;
+    }
+
+    .app {
+      width: 100%;
+      max-width: 720px;
+      margin: 0 auto;
+      background: white;
+      border-radius: 18px;
+      padding: 26px;
+      box-shadow: 0 8px 28px rgba(0,0,0,0.08);
+    }
+
+    h1 {
+      margin-top: 0;
+      margin-bottom: 8px;
+      font-size: 28px;
+    }
+
+    .subtitle {
+      margin-top: 0;
+      line-height: 1.5;
+    }
+
+    .box {
+      margin-top: 18px;
+      padding: 16px;
+      border-radius: 12px;
+      background: #eaf1ff;
+    }
+
+    .row {
+      margin-top: 12px;
+    }
+
+    label {
+      display: block;
+      font-weight: bold;
+      margin-bottom: 6px;
+    }
+
+    select,
+    input {
+      width: 100%;
+      padding: 12px;
+      border: 1px solid #b9c2d0;
+      border-radius: 8px;
+      font-size: 16px;
+      background: white;
+    }
+
+    button {
+      border: 0;
+      border-radius: 8px;
+      padding: 12px 16px;
+      font-size: 14px;
+      font-weight: bold;
+      cursor: pointer;
+      margin-right: 7px;
+      margin-top: 12px;
+    }
+
+    #checkBtn {
+      background: #16a085;
+      color: white;
+    }
+
+    #retryBtn {
+      background: #66758d;
+      color: white;
+    }
+
+    #nextBtn {
+      background: #2463eb;
+      color: white;
+    }
+
+    #nextBtn:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+    }
+
+    .result {
+      margin-top: 20px;
+      padding: 16px;
+      border-radius: 12px;
+      font-weight: bold;
+      line-height: 1.5;
+    }
+
+    .waiting {
+      background: #eef1f5;
+    }
+
+    .pass {
+      background: #dff8e7;
+    }
+
+    .support {
+      background: #fff3c9;
+    }
+
+    .uncertain {
+      background: #ffe5c7;
+    }
+
+    .state {
+      margin-top: 14px;
+      padding: 14px;
+      background: #e7f4ff;
+      border-radius: 10px;
+      line-height: 1.55;
+    }
+
+    .hint {
+      margin-top: 14px;
+      padding: 14px;
+      background: #fff8dc;
+      border-left: 5px solid #f2c94c;
+      border-radius: 8px;
+      line-height: 1.5;
+    }
+
+    .rule {
+      margin-top: 20px;
+      padding: 16px;
+      background: #f6f7f9;
+      border-radius: 12px;
+      line-height: 1.55;
+    }
+
+    .small {
+      font-size: 12px;
+      color: #667085;
+      margin-top: 22px;
+      line-height: 1.45;
+    }
+
+    code {
+      background: #edf0f4;
+      padding: 2px 5px;
+      border-radius: 4px;
+    }
+  </style>
+</head>
+
+<body>
+
+<div class="app">
+
+  <h1>🧠 SPEAK Semantic Validator V0.1</h1>
+
+  <p class="subtitle">
+    This prototype tests whether the learner has completed the
+    current communication task before the conversation is allowed to advance.
+  </p>
+
+  <div class="box">
+
+    <strong>Scenario: Booking a Tour</strong>
+
+    <div class="row">
+      <label for="taskSelect">Current task</label>
+
+      <select id="taskSelect">
+        <option value="destination">
+          Ask the tourist where they would like to travel
+        </option>
+
+        <option value="activity">
+          Give information about activities
+        </option>
+
+        <option value="accommodation">
+          Ask about accommodation preference
+        </option>
+
+        <option value="duration">
+          Ask how long the tourist would like to stay
+        </option>
+      </select>
+    </div>
+
+    <div class="row">
+      <label for="studentInput">Learner transcript</label>
+
+      <input
+        id="studentInput"
+        type="text"
+        placeholder="Example: Where would you like to travel?"
+        autocomplete="off"
+      >
+    </div>
+
+  </div>
+
+  <button id="checkBtn">✓ CHECK RESPONSE</button>
+  <button id="retryBtn">↻ TRY AGAIN</button>
+  <button id="nextBtn" disabled>→ ADVANCE</button>
+
+  <div id="result" class="result waiting">
+    ⚪ WAITING — enter a learner response.
+  </div>
+
+  <div id="stateBox" class="state">
+    <strong>State Engine</strong><br>
+    currentTask: ASK_DESTINATION<br>
+    expectedFunction: ASK_QUESTION<br>
+    expectedInformation: DESTINATION<br>
+    hintLevel: 0<br>
+    advance: false
+  </div>
+
+  <div id="hintBox" class="hint" style="display:none;"></div>
+
+  <div class="rule">
+    <strong>Validator rule</strong><br><br>
+
+    🟢 <strong>PASS</strong> —
+    the learner completes the current communication task.
+    Only PASS can unlock ADVANCE.
+    <br><br>
+
+    🟡 <strong>NEEDS SUPPORT</strong> —
+    the response is understandable but does not complete the current task.
+    Give Hint 1 → Hint 2 → Hint 3 progressively.
+    <br><br>
+
+    🟠 <strong>UNCERTAIN</strong> —
+    the transcript is too unclear to judge safely.
+    Ask the learner to say it again.
+    Do not increase the hint level.
+    <br><br>
+
+    <strong>Important:</strong>
+    the validator checks task achievement.
+    It does not assume that a Browser Speech transcript is an exact record
+    of the learner's grammar.
+  </div>
+
+  <p class="small">
+    Prototype only. No Gemini API is used on this page.
+    No learner score is produced.
+  </p>
+
+</div>
+
+<script>
+  const taskSelect = document.getElementById("taskSelect");
+  const studentInput = document.getElementById("studentInput");
+
+  const checkBtn = document.getElementById("checkBtn");
+  const retryBtn = document.getElementById("retryBtn");
+  const nextBtn = document.getElementById("nextBtn");
+
+  const result = document.getElementById("result");
+  const stateBox = document.getElementById("stateBox");
+  const hintBox = document.getElementById("hintBox");
+
+  let hintLevel = 0;
+  let advance = false;
+
+  const tasks = {
+
+    destination: {
+      currentTask: "ASK_DESTINATION",
+      expectedFunction: "ASK_QUESTION",
+      expectedInformation: "DESTINATION",
+
+      hint1: "ask • destination",
+      hint2: "Where would you like to ______?",
+      hint3: "Where would you like to travel?"
+    },
+
+    activity: {
+      currentTask: "GIVE_ACTIVITY_INFORMATION",
+      expectedFunction: "GIVE_INFORMATION",
+      expectedInformation: "ACTIVITY",
+
+      hint1: "activities • sightseeing • local food",
+      hint2: "The tour includes ______.",
+      hint3: "The tour includes sightseeing and local food."
+    },
+
+    accommodation: {
+      currentTask: "ASK_ACCOMMODATION",
+      expectedFunction: "ASK_QUESTION",
+      expectedInformation: "ACCOMMODATION",
+
+      hint1: "ask • hotel • accommodation",
+      hint2: "Where would you like to ______?",
+      hint3: "Where would you like to stay?"
+    },
+
+    duration: {
+      currentTask: "ASK_DURATION",
+      expectedFunction: "ASK_QUESTION",
+      expectedInformation: "DURATION",
+
+      hint1: "ask • how long • stay",
+      hint2: "How long would you like to ______?",
+      hint3: "How long would you like to stay?"
+    }
+
+  };
+
+  function normalize(text) {
+    return text
+      .toLowerCase()
+      .replace(/[.,!?;:'"]/g, "")
+      .replace(/\s+/g, " ")
+      .trim();
+  }
+
+  function looksUnclear(text) {
+
+    const clean = normalize(text);
+
+    if (!clean) {
+      return true;
+    }
+
+    const words = clean.split(" ");
+
+    if (words.length === 1) {
+      const unsafeSingleWords = [
+        "yes",
+        "no",
+        "okay",
+        "ok",
+        "maybe",
+        "what",
+        "sorry"
+      ];
+
+      if (unsafeSingleWords.includes(clean)) {
+        return false;
+      }
+
+      return true;
+    }
+
+    return false;
+  }
+
+  function isQuestion(text) {
+
+    const clean = normalize(text);
+
+    const questionStarts = [
+      "where",
+      "what",
+      "which",
+      "when",
+      "how",
+      "could",
+      "can",
+      "would",
+      "do",
+      "does",
+      "are",
+      "is"
+    ];
+
+    return questionStarts.some(start =>
+      clean === start || clean.startsWith(start + " ")
+    );
+  }
+
+  function validateDestination(text) {
+
+    const clean = normalize(text);
+
+    if (!isQuestion(text)) {
+      return false;
+    }
+
+    const destinationSignals = [
+      "where",
+      "destination",
+      "travel",
+      "visit",
+      "go"
+    ];
+
+    return destinationSignals.some(word =>
+      clean.includes(word)
+    );
+  }
+
+  function validateActivity(text) {
+
+    const clean = normalize(text);
+
+    if (isQuestion(text)) {
+      return false;
+    }
+
+    const activitySignals = [
+      "sightseeing",
+      "local food",
+      "food tour",
+      "city tour",
+      "museum",
+      "market",
+      "markets",
+      "temple",
+      "beach",
+      "shopping",
+      "visit",
+      "activities",
+      "activity",
+      "tour includes",
+      "you can"
+    ];
+
+    return activitySignals.some(signal =>
+      clean.includes(signal)
+    );
+  }
+
+  function validateAccommodation(text) {
+
+    const clean = normalize(text);
+
+    if (!isQuestion(text)) {
+      return false;
+    }
+
+    const accommodationSignals = [
+      "stay",
+      "hotel",
+      "accommodation",
+      "room",
+      "hostel",
+      "resort"
+    ];
+
+    return accommodationSignals.some(signal =>
+      clean.includes(signal)
+    );
+  }
+
+  function validateDuration(text) {
+
+    const clean = normalize(text);
+
+    if (!isQuestion(text)) {
+      return false;
+    }
+
+    const durationSignals = [
+      "how long",
+      "how many nights",
+      "how many days",
+      "duration",
+      "stay"
+    ];
+
+    return durationSignals.some(signal =>
+      clean.includes(signal)
+    );
+  }
+
+  function validateCurrentTask(text) {
+
+    const selectedTask = taskSelect.value;
+
+    if (selectedTask === "destination") {
+      return validateDestination(text);
+    }
+
+    if (selectedTask === "activity") {
+      return validateActivity(text);
+    }
+
+    if (selectedTask === "accommodation") {
+      return validateAccommodation(text);
+    }
+
+    if (selectedTask === "duration") {
+      return validateDuration(text);
+    }
+
+    return false;
+  }
+
+  function updateState() {
+
+    const task = tasks[taskSelect.value];
+
+    stateBox.innerHTML = `
+      <strong>State Engine</strong><br>
+      currentTask: ${task.currentTask}<br>
+      expectedFunction: ${task.expectedFunction}<br>
+      expectedInformation: ${task.expectedInformation}<br>
+      hintLevel: ${hintLevel}<br>
+      advance: ${advance}
+    `;
+  }
+
+  function showHint() {
+
+    const task = tasks[taskSelect.value];
+
+    if (hintLevel === 1) {
+      hintBox.innerHTML =
+        "<strong>💡 Hint 1</strong><br>" + task.hint1;
+    }
+
+    else if (hintLevel === 2) {
+      hintBox.innerHTML =
+        "<strong>💡 Hint 2</strong><br>" + task.hint2;
+    }
+
+    else {
+      hintBox.innerHTML =
+        "<strong>💡 Hint 3</strong><br>" + task.hint3;
+    }
+
+    hintBox.style.display = "block";
+  }
+
+  function resetAttempt() {
+
+    studentInput.value = "";
+
+    hintLevel = 0;
+    advance = false;
+
+    nextBtn.disabled = true;
+
+    result.className = "result waiting";
+    result.innerHTML =
+      "⚪ WAITING — enter a learner response.";
+
+    hintBox.style.display = "none";
+
+    updateState();
+
+    studentInput.focus();
+  }
+
+  checkBtn.addEventListener("click", () => {
+
+    const text = studentInput.value.trim();
+
+    advance = false;
+    nextBtn.disabled = true;
+
+    if (!text) {
+
+      result.className = "result uncertain";
+
+      result.innerHTML =
+        "🟠 UNCERTAIN — no usable transcript. Please say it again.";
+
+      hintBox.style.display = "none";
+
+      updateState();
+      return;
+    }
+
+    if (looksUnclear(text)) {
+
+      result.className = "result uncertain";
+
+      result.innerHTML =
+        "🟠 UNCERTAIN — transcript is too unclear to judge safely. Please say it again.";
+
+      hintBox.style.display = "none";
+
+      updateState();
+      return;
+    }
+
+    const passed = validateCurrentTask(text);
+
+    if (passed) {
+
+      advance = true;
+
+      result.className = "result pass";
+
+      result.innerHTML =
+        "🟢 PASS — current communication task achieved. ADVANCE is unlocked.";
+
+      hintBox.style.display = "none";
+
+      nextBtn.disabled = false;
+
+      updateState();
+      return;
+    }
+
+    hintLevel = Math.min(hintLevel + 1, 3);
+
+    result.className = "result support";
+
+    result.innerHTML =
+      "🟡 NEEDS SUPPORT — current task has not been achieved. Do not advance.";
+
+    showHint();
+
+    updateState();
+  });
+
+  retryBtn.addEventListener("click", () => {
+
+    studentInput.value = "";
+
+    advance = false;
+
+    nextBtn.disabled = true;
+
+    result.className = "result waiting";
+
+    result.innerHTML =
+      "⚪ WAITING — learner may try the same task again.";
+
+    updateState();
+
+    studentInput.focus();
+  });
+
+  nextBtn.addEventListener("click", () => {
+
+    if (!advance) {
+      return;
+    }
+
+    alert(
+      "TASK COMPLETED. In the full SPEAK Engine, only now may the State Engine move to the next task."
+    );
+  });
+
+  taskSelect.addEventListener("change", resetAttempt);
+
+  studentInput.addEventListener("keydown", event => {
+    if (event.key === "Enter") {
+      checkBtn.click();
+    }
+  });
+
+  resetAttempt();
+</script>
+
+</body>
+</html>
