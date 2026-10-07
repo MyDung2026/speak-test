@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Semantic API Production Test</title>
+
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      max-width: 850px;
+      margin: 40px auto;
+      padding: 20px;
+      line-height: 1.5;
+    }
+
+    h1 {
+      margin-bottom: 8px;
+    }
+
+    .box {
+      border: 1px solid #ccc;
+      border-radius: 10px;
+      padding: 18px;
+      margin-top: 20px;
+    }
+
+    button {
+      padding: 12px 20px;
+      font-size: 16px;
+      cursor: pointer;
+      margin-top: 10px;
+    }
+
+    pre {
+      background: #f4f4f4;
+      padding: 15px;
+      border-radius: 8px;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+
+    .status {
+      font-weight: bold;
+      margin-top: 15px;
+    }
+  </style>
+</head>
+
+<body>
+
+  <h1>Semantic Validator — Production Test</h1>
+
+  <p>
+    GitHub Pages → Cloudflare Worker Production → Gemini Semantic Validator
+  </p>
+
+  <div class="box">
+
+    <strong>Current Task</strong>
+    <p>ASK_DESTINATION</p>
+
+    <strong>Expected Function</strong>
+    <p>ASK_QUESTION</p>
+
+    <strong>Expected Intent</strong>
+    <p>DESTINATION_QUERY</p>
+
+    <strong>Expected Information</strong>
+    <p>DESTINATION</p>
+
+    <strong>Learner Transcript</strong>
+    <p>Have you decided where you'd like to go?</p>
+
+    <button id="testButton">
+      TEST PRODUCTION API
+    </button>
+
+    <div id="status" class="status">
+      Ready.
+    </div>
+
+  </div>
+
+  <div class="box">
+
+    <strong>HTTP Status</strong>
+    <pre id="httpStatus">Not tested yet.</pre>
+
+    <strong>Response</strong>
+    <pre id="response">Not tested yet.</pre>
+
+  </div>
+
+  <script>
+
+    const API_URL =
+      "https://speak-test-api.ptmdung.workers.dev/validate";
+
+    const testButton =
+      document.getElementById("testButton");
+
+    const statusBox =
+      document.getElementById("status");
+
+    const httpStatus =
+      document.getElementById("httpStatus");
+
+    const responseBox =
+      document.getElementById("response");
+
+
+    testButton.addEventListener("click", async () => {
+
+      testButton.disabled = true;
+
+      statusBox.textContent =
+        "Sending request to Production Worker...";
+
+      httpStatus.textContent =
+        "Waiting...";
+
+      responseBox.textContent =
+        "Waiting...";
+
+
+      const payload = {
+
+        currentTask:
+          "ASK_DESTINATION",
+
+        expectedFunction:
+          "ASK_QUESTION",
+
+        expectedIntent:
+          "DESTINATION_QUERY",
+
+        expectedInformation:
+          "DESTINATION",
+
+        learnerTranscript:
+          "Have you decided where you'd like to go?"
+
+      };
+
+
+      try {
+
+        const response = await fetch(
+          API_URL,
+          {
+            method: "POST",
+
+            headers: {
+              "Content-Type": "application/json"
+            },
+
+            body: JSON.stringify(payload)
+          }
+        );
+
+
+        httpStatus.textContent =
+          response.status + " " + response.statusText;
+
+
+        const rawText =
+          await response.text();
+
+
+        try {
+
+          const json =
+            JSON.parse(rawText);
+
+          responseBox.textContent =
+            JSON.stringify(json, null, 2);
+
+        }
+
+        catch {
+
+          responseBox.textContent =
+            rawText;
+
+        }
+
+
+        if (response.ok) {
+
+          statusBox.textContent =
+            "Production API responded successfully.";
+
+        }
+
+        else {
+
+          statusBox.textContent =
+            "Production API returned an error.";
+
+        }
+
+      }
+
+      catch (error) {
+
+        httpStatus.textContent =
+          "NETWORK / CORS ERROR";
+
+        responseBox.textContent =
+          String(error);
+
+        statusBox.textContent =
+          "The browser could not complete the request.";
+
+      }
+
+      finally {
+
+        testButton.disabled = false;
+
+      }
+
+    });
+
+  </script>
+
+</body>
+</html>
