@@ -1,0 +1,1098 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<title>SPEAK State + Semantic Validator V0.6</title>
+
+<style>
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  padding: 35px 15px;
+  background: #f3f6fb;
+  font-family: Arial, Helvetica, sans-serif;
+  color: #10213f;
+}
+
+.container {
+  max-width: 760px;
+  margin: auto;
+  background: white;
+  padding: 28px;
+  border-radius: 18px;
+  box-shadow: 0 8px 25px rgba(0,0,0,.08);
+}
+
+h1 {
+  color: #06458f;
+  margin-top: 0;
+}
+
+.intro {
+  line-height: 1.45;
+}
+
+.task-card {
+  background: #eaf2ff;
+  padding: 16px;
+  border-radius: 12px;
+  margin: 18px 0;
+}
+
+.task-card p {
+  margin: 2px 0;
+}
+
+.task-title {
+  font-size: 17px;
+  font-weight: bold;
+  margin: 10px 0 !important;
+}
+
+label {
+  font-weight: bold;
+  display: block;
+  margin-bottom: 6px;
+}
+
+input {
+  width: 100%;
+  padding: 12px;
+  border: 1px solid #adc1df;
+  border-radius: 8px;
+  font-size: 16px;
+}
+
+.buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+button {
+  border: none;
+  border-radius: 8px;
+  padding: 11px 16px;
+  font-weight: bold;
+  cursor: pointer;
+}
+
+.check {
+  background: #00ae8d;
+  color: white;
+}
+
+.try {
+  background: #6f88ab;
+  color: white;
+}
+
+.advance {
+  background: #1769ff;
+  color: white;
+}
+
+.restart {
+  background: #0a2e78;
+  color: white;
+}
+
+button:disabled {
+  background: #aac5f7;
+  cursor: not-allowed;
+}
+
+.status {
+  padding: 13px;
+  border-radius: 9px;
+  margin-top: 12px;
+  font-weight: bold;
+  line-height: 1.4;
+}
+
+.waiting {
+  background: #edf1f6;
+}
+
+.pass {
+  background: #d4f6d9;
+}
+
+.support {
+  background: #fff0bd;
+}
+
+.panel {
+  margin-top: 12px;
+  padding: 16px;
+  border-radius: 10px;
+  line-height: 1.55;
+}
+
+.state {
+  background: #dff1ff;
+}
+
+.validator {
+  background: #f1e7ff;
+  border-left: 4px solid #804cff;
+}
+
+.guard {
+  background: #e6f7f3;
+  border-left: 4px solid #00a889;
+}
+
+.regression {
+  background: #fff6df;
+  border-left: 4px solid #f0ad00;
+}
+
+code {
+  font-family: Consolas, monospace;
+}
+</style>
+</head>
+
+<body>
+
+<div class="container">
+
+<h1>🧠 SPEAK State + Semantic Validator V0.6</h1>
+
+<p class="intro">
+This prototype tests whether the learner performs the correct
+<strong>communication function</strong>, expresses the correct
+<strong>intent</strong>, and targets the required
+<strong>information</strong>.
+The State Engine keeps final control of task progression.
+V0.6 adds a canonical-example guard and stronger intent discrimination.
+</p>
+
+<div class="task-card">
+  <p><strong>Scenario:</strong> Booking a Tour</p>
+  <p><strong>Student role:</strong> Travel Agent</p>
+  <p><strong>AI role:</strong> Tourist</p>
+  <p id="taskNumber"></p>
+
+  <p class="task-title" id="taskInstruction"></p>
+
+  <p>Expected function: <span id="expectedFunction"></span></p>
+  <p>Expected intent: <span id="expectedIntent"></span></p>
+  <p>Expected information: <span id="expectedInformation"></span></p>
+</div>
+
+<label for="learnerInput">Learner transcript</label>
+
+<input
+  id="learnerInput"
+  type="text"
+  placeholder="Enter the learner response here"
+>
+
+<div class="buttons">
+  <button class="check" onclick="checkResponse()">✓ CHECK RESPONSE</button>
+  <button class="try" onclick="tryAgain()">↻ TRY AGAIN</button>
+  <button class="advance" id="advanceButton" onclick="advanceTask()" disabled>
+    → ADVANCE
+  </button>
+  <button class="restart" onclick="restart()">↻ RESTART</button>
+</div>
+
+<div id="status" class="status waiting">
+○ WAITING — complete the current communication task.
+</div>
+
+<div class="panel state">
+<strong>State Engine</strong><br>
+<div id="statePanel"></div>
+</div>
+
+<div class="panel validator">
+<strong>Semantic Validator</strong><br>
+<div id="validatorPanel">No response checked yet.</div>
+</div>
+
+<div class="panel guard">
+<strong>Intent Guard</strong><br>
+<div id="guardPanel">
+V0.6 checks communication function, intent and required information separately.
+</div>
+</div>
+
+<div class="panel regression">
+<strong>V0.6 Regression Guard</strong><br>
+Canonical teacher-approved examples are protected from false rejection.
+Near-match sentences must still satisfy the intended communication purpose.
+</div>
+
+</div>
+
+<script>
+
+const tasks = [
+
+{
+  id: "ASK_DESTINATION",
+  instruction: "Ask the tourist where they would like to travel",
+  expectedFunction: "ASK_QUESTION",
+  expectedIntent: "DESTINATION_QUERY",
+  expectedInformation: "DESTINATION",
+
+  canonicalExamples: [
+    "where would you like to travel",
+    "where would you like to go",
+    "where do you want to go",
+    "where do you want to travel",
+    "which country would you like to visit",
+    "which country would you like to travel to",
+    "which country are you interested in visiting",
+    "what destination do you have in mind",
+    "where are you planning to go"
+  ]
+},
+
+{
+  id: "GIVE_ACTIVITY_INFORMATION",
+  instruction: "Tell the tourist about activities included in the tour",
+  expectedFunction: "GIVE_INFORMATION",
+  expectedIntent: "ACTIVITY_INFORMATION",
+  expectedInformation: "ACTIVITY",
+
+  canonicalExamples: [
+    "the tour includes sightseeing",
+    "the tour includes sightseeing and local food",
+    "you can go sightseeing",
+    "you can visit local markets",
+    "there are city tours",
+    "there are cooking classes",
+    "you can try local food",
+    "we offer sightseeing tours"
+  ]
+},
+
+{
+  id: "ASK_ACCOMMODATION",
+  instruction: "Ask what kind of accommodation the tourist prefers",
+  expectedFunction: "ASK_QUESTION",
+  expectedIntent: "ACCOMMODATION_QUERY",
+  expectedInformation: "ACCOMMODATION",
+
+  canonicalExamples: [
+    "where would you like to stay",
+    "what kind of accommodation would you prefer",
+    "would you prefer a hotel or a hostel",
+    "what type of hotel would you like",
+    "what accommodation would you like"
+  ]
+},
+
+{
+  id: "ASK_DURATION",
+  instruction: "Ask how long the tourist would like to stay",
+  expectedFunction: "ASK_QUESTION",
+  expectedIntent: "DURATION_QUERY",
+  expectedInformation: "DURATION",
+
+  canonicalExamples: [
+    "how long would you like to stay",
+    "how many nights would you like to stay",
+    "how many days would you like to stay",
+    "how long are you planning to stay"
+  ]
+},
+
+{
+  id: "GIVE_PRICE_INFORMATION",
+  instruction: "Tell the tourist the price of the tour or accommodation",
+  expectedFunction: "GIVE_INFORMATION",
+  expectedIntent: "PRICE_INFORMATION",
+  expectedInformation: "PRICE",
+
+  canonicalExamples: [
+    "the tour costs 200 dollars",
+    "it costs 200 dollars",
+    "the room costs 45 dollars per night",
+    "the price is 200 dollars",
+    "it is 45 dollars per night"
+  ]
+},
+
+{
+  id: "CONFIRM_BOOKING",
+  instruction: "Confirm the tourist's booking",
+  expectedFunction: "CONFIRM",
+  expectedIntent: "BOOKING_CONFIRMATION",
+  expectedInformation: "BOOKING",
+
+  canonicalExamples: [
+    "your booking is confirmed",
+    "i have confirmed your booking",
+    "your tour is booked",
+    "the booking is confirmed",
+    "your reservation is confirmed"
+  ]
+}
+
+];
+
+let currentTaskIndex = 0;
+let hintLevel = 0;
+let advance = false;
+let completedTasks = 0;
+
+function normalize(text) {
+
+  return text
+    .toLowerCase()
+    .replace(/[’']/g, "'")
+    .replace(/[?!.,]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+
+}
+
+function includesAny(text, words) {
+
+  return words.some(word => text.includes(word));
+
+}
+
+function isQuestion(text) {
+
+  const t = normalize(text);
+
+  const questionStarts = [
+    "where ",
+    "what ",
+    "which ",
+    "how ",
+    "when ",
+    "why ",
+    "who ",
+    "would ",
+    "could ",
+    "can ",
+    "do ",
+    "does ",
+    "did ",
+    "are ",
+    "is ",
+    "have ",
+    "has "
+  ];
+
+  return questionStarts.some(start => t.startsWith(start));
+
+}
+
+function canonicalMatch(text, task) {
+
+  const t = normalize(text);
+
+  return task.canonicalExamples.some(example => {
+
+    const e = normalize(example);
+
+    return t === e;
+
+  });
+
+}
+
+function detectFunction(text) {
+
+  const t = normalize(text);
+
+  if (isQuestion(t)) {
+    return "ASK_QUESTION";
+  }
+
+  if (
+    includesAny(t, [
+      "confirmed",
+      "booking is confirmed",
+      "tour is booked",
+      "reservation is confirmed"
+    ])
+  ) {
+    return "CONFIRM";
+  }
+
+  if (t.length > 0) {
+    return "GIVE_INFORMATION";
+  }
+
+  return "UNKNOWN";
+}
+
+function detectDestinationIntent(text) {
+
+  const t = normalize(text);
+
+  /*
+    PASS intent:
+    learner asks the tourist to IDENTIFY or CHOOSE
+    a destination/place/country.
+  */
+
+  const directDestinationPatterns = [
+
+    /^where (would|do|will|can|are) you .*(go|travel|visit|planning)/,
+
+    /^where are you planning to (go|travel|visit)/,
+
+    /^which (country|city|place|destination) .*(like|want|prefer|interested|planning)/,
+
+    /^what (country|city|place|destination) .*(like|want|prefer|have in mind)/,
+
+    /^what destination do you have in mind/,
+
+    /^which country are you interested in visiting/
+
+  ];
+
+  const directMatch =
+    directDestinationPatterns.some(pattern => pattern.test(t));
+
+  if (directMatch) {
+    return true;
+  }
+
+  /*
+    Explicit false-positive guards.
+    These sentences may contain travel/destination vocabulary
+    but do NOT ask the tourist to provide a destination.
+  */
+
+  const wrongIntentPatterns = [
+
+    /how much/,
+    /cost/,
+    /price/,
+    /sightseeing/,
+    /activity/,
+    /activities/,
+    /what can .* do/,
+    /where can i/,
+    /where can we/,
+    /do you want to travel$/,
+    /would you like to travel$/,
+    /would you like to travel abroad/,
+    /do you like travelling/,
+    /do you like traveling/,
+    /is .* a good destination/,
+    /is .* a good place/,
+    /have you decided where/,
+    /do you know where/,
+    /i know where/,
+    /i'd like to visit/,
+    /i would like to visit/,
+    /i want to go/,
+    /i want to travel/
+
+  ];
+
+  if (wrongIntentPatterns.some(pattern => pattern.test(t))) {
+    return false;
+  }
+
+  return false;
+}
+
+function detectActivityIntent(text) {
+
+  const t = normalize(text);
+
+  if (
+    includesAny(t, [
+      "sightseeing",
+      "city tour",
+      "city tours",
+      "cooking class",
+      "cooking classes",
+      "local food",
+      "local market",
+      "local markets",
+      "museum",
+      "museums",
+      "beach",
+      "beaches",
+      "activities",
+      "activity"
+    ])
+  ) {
+
+    if (
+      includesAny(t, [
+        "cost",
+        "price",
+        "how much"
+      ])
+    ) {
+      return false;
+    }
+
+    return !isQuestion(t);
+  }
+
+  return false;
+}
+
+function detectAccommodationIntent(text) {
+
+  const t = normalize(text);
+
+  if (!isQuestion(t)) {
+    return false;
+  }
+
+  const accommodationWords = [
+    "stay",
+    "hotel",
+    "hostel",
+    "accommodation",
+    "room",
+    "resort"
+  ];
+
+  const wrongWords = [
+    "cost",
+    "price",
+    "how much",
+    "per night"
+  ];
+
+  if (includesAny(t, wrongWords)) {
+    return false;
+  }
+
+  return includesAny(t, accommodationWords);
+}
+
+function detectDurationIntent(text) {
+
+  const t = normalize(text);
+
+  if (!isQuestion(t)) {
+    return false;
+  }
+
+  return (
+    t.includes("how long") ||
+    t.includes("how many nights") ||
+    t.includes("how many days")
+  );
+
+}
+
+function detectPriceIntent(text) {
+
+  const t = normalize(text);
+
+  if (isQuestion(t)) {
+    return false;
+  }
+
+  const moneyWords = [
+    "dollar",
+    "dollars",
+    "$",
+    "costs",
+    "price is",
+    "per night"
+  ];
+
+  return includesAny(t, moneyWords);
+
+}
+
+function detectBookingConfirmationIntent(text) {
+
+  const t = normalize(text);
+
+  return includesAny(t, [
+    "booking is confirmed",
+    "confirmed your booking",
+    "tour is booked",
+    "reservation is confirmed",
+    "booking has been confirmed"
+  ]);
+
+}
+
+function detectIntent(text, task) {
+
+  switch (task.expectedIntent) {
+
+    case "DESTINATION_QUERY":
+      return detectDestinationIntent(text)
+        ? "DESTINATION_QUERY"
+        : "OTHER_INTENT";
+
+    case "ACTIVITY_INFORMATION":
+      return detectActivityIntent(text)
+        ? "ACTIVITY_INFORMATION"
+        : "OTHER_INTENT";
+
+    case "ACCOMMODATION_QUERY":
+      return detectAccommodationIntent(text)
+        ? "ACCOMMODATION_QUERY"
+        : "OTHER_INTENT";
+
+    case "DURATION_QUERY":
+      return detectDurationIntent(text)
+        ? "DURATION_QUERY"
+        : "OTHER_INTENT";
+
+    case "PRICE_INFORMATION":
+      return detectPriceIntent(text)
+        ? "PRICE_INFORMATION"
+        : "OTHER_INTENT";
+
+    case "BOOKING_CONFIRMATION":
+      return detectBookingConfirmationIntent(text)
+        ? "BOOKING_CONFIRMATION"
+        : "OTHER_INTENT";
+
+    default:
+      return "OTHER_INTENT";
+  }
+
+}
+
+function detectInformation(text, task) {
+
+  const t = normalize(text);
+
+  switch (task.expectedInformation) {
+
+    case "DESTINATION":
+
+      if (
+        includesAny(t, [
+          "where",
+          "country",
+          "city",
+          "place",
+          "destination"
+        ])
+      ) {
+        return "DESTINATION";
+      }
+
+      return "OTHER";
+
+    case "ACTIVITY":
+
+      if (
+        includesAny(t, [
+          "sightseeing",
+          "tour",
+          "market",
+          "food",
+          "cooking",
+          "museum",
+          "beach",
+          "activity",
+          "activities"
+        ])
+      ) {
+        return "ACTIVITY";
+      }
+
+      return "OTHER";
+
+    case "ACCOMMODATION":
+
+      if (
+        includesAny(t, [
+          "stay",
+          "hotel",
+          "hostel",
+          "accommodation",
+          "room",
+          "resort"
+        ])
+      ) {
+        return "ACCOMMODATION";
+      }
+
+      return "OTHER";
+
+    case "DURATION":
+
+      if (
+        includesAny(t, [
+          "how long",
+          "night",
+          "nights",
+          "day",
+          "days"
+        ])
+      ) {
+        return "DURATION";
+      }
+
+      return "OTHER";
+
+    case "PRICE":
+
+      if (
+        includesAny(t, [
+          "cost",
+          "costs",
+          "price",
+          "dollar",
+          "dollars",
+          "$",
+          "per night"
+        ])
+      ) {
+        return "PRICE";
+      }
+
+      return "OTHER";
+
+    case "BOOKING":
+
+      if (
+        includesAny(t, [
+          "booking",
+          "booked",
+          "reservation",
+          "confirmed"
+        ])
+      ) {
+        return "BOOKING";
+      }
+
+      return "OTHER";
+
+    default:
+      return "OTHER";
+  }
+
+}
+
+function evaluateResponse(text, task) {
+
+  const cleaned = normalize(text);
+
+  if (!cleaned) {
+
+    return {
+      pass: false,
+      detectedFunction: "UNKNOWN",
+      detectedIntent: "OTHER_INTENT",
+      detectedInformation: "OTHER",
+      canonical: false,
+      reason: "No learner response."
+    };
+
+  }
+
+  /*
+    Canonical Teacher Guard
+
+    Teacher-approved examples are known-good utterances.
+    They still belong to the current task only.
+  */
+
+  if (canonicalMatch(cleaned, task)) {
+
+    return {
+      pass: true,
+      detectedFunction: task.expectedFunction,
+      detectedIntent: task.expectedIntent,
+      detectedInformation: task.expectedInformation,
+      canonical: true,
+      reason: "Teacher-approved canonical example matched."
+    };
+
+  }
+
+  const detectedFunction = detectFunction(cleaned);
+  const detectedIntent = detectIntent(cleaned, task);
+  const detectedInformation = detectInformation(cleaned, task);
+
+  const functionPass =
+    detectedFunction === task.expectedFunction;
+
+  const intentPass =
+    detectedIntent === task.expectedIntent;
+
+  const informationPass =
+    detectedInformation === task.expectedInformation;
+
+  const pass =
+    functionPass &&
+    intentPass &&
+    informationPass;
+
+  return {
+    pass,
+    detectedFunction,
+    detectedIntent,
+    detectedInformation,
+    canonical: false,
+    functionPass,
+    intentPass,
+    informationPass,
+    reason: pass
+      ? "Function + Intent + Information matched."
+      : "At least one required communication condition was not achieved."
+  };
+
+}
+
+function checkResponse() {
+
+  const input =
+    document.getElementById("learnerInput").value;
+
+  const task =
+    tasks[currentTaskIndex];
+
+  const result =
+    evaluateResponse(input, task);
+
+  const status =
+    document.getElementById("status");
+
+  const validator =
+    document.getElementById("validatorPanel");
+
+  const guard =
+    document.getElementById("guardPanel");
+
+  if (result.pass) {
+
+    advance = true;
+
+    status.className =
+      "status pass";
+
+    status.innerHTML =
+      "🟢 PASS — Function + Intent + Information matched. State Engine has unlocked ADVANCE.";
+
+    document.getElementById("advanceButton").disabled =
+      false;
+
+  } else {
+
+    advance = false;
+
+    hintLevel =
+      Math.min(hintLevel + 1, 3);
+
+    status.className =
+      "status support";
+
+    status.innerHTML =
+      "🟡 NEEDS SUPPORT — current task has not been achieved. Stay on this task. Do not advance.";
+
+    document.getElementById("advanceButton").disabled =
+      true;
+
+  }
+
+  validator.innerHTML = `
+    Result: <strong>${result.pass ? "PASS" : "NEEDS_SUPPORT"}</strong><br>
+    Detected function: ${result.detectedFunction}<br>
+    Required function: ${task.expectedFunction}<br><br>
+
+    Detected intent: ${result.detectedIntent}<br>
+    Required intent: ${task.expectedIntent}<br><br>
+
+    Detected information: ${result.detectedInformation}<br>
+    Required information: ${task.expectedInformation}<br><br>
+
+    Canonical example match: ${result.canonical ? "YES" : "NO"}<br>
+    Reason: ${result.reason}
+  `;
+
+  if (result.canonical) {
+
+    guard.innerHTML =
+      "🔒 Canonical Teacher Guard: PASS. This teacher-approved expression belongs to the current task.";
+
+  } else if (result.pass) {
+
+    guard.innerHTML =
+      "✨ Flexible semantic match: PASS. The learner used a valid alternative expression.";
+
+  } else {
+
+    guard.innerHTML =
+      "🛡️ Intent Guard: response did not satisfy the complete communication purpose. State Engine remains locked.";
+
+  }
+
+  renderState();
+
+}
+
+function advanceTask() {
+
+  if (!advance) {
+    return;
+  }
+
+  completedTasks++;
+
+  currentTaskIndex++;
+
+  if (currentTaskIndex >= tasks.length) {
+
+    document.getElementById("status").className =
+      "status pass";
+
+    document.getElementById("status").innerHTML =
+      "✅ ALL TEST TASKS COMPLETED.";
+
+    document.getElementById("advanceButton").disabled =
+      true;
+
+    document.getElementById("learnerInput").disabled =
+      true;
+
+    document.getElementById("validatorPanel").innerHTML =
+      "All six communication tasks completed.";
+
+    return;
+  }
+
+  hintLevel = 0;
+  advance = false;
+
+  document.getElementById("learnerInput").value =
+    "";
+
+  document.getElementById("advanceButton").disabled =
+    true;
+
+  document.getElementById("status").className =
+    "status waiting";
+
+  document.getElementById("status").innerHTML =
+    "☑ Previous task completed. State Engine has opened the next task.";
+
+  document.getElementById("validatorPanel").innerHTML =
+    "Previous task completed. Waiting for the next learner response.";
+
+  document.getElementById("guardPanel").innerHTML =
+    "State Engine has locked progression until the new communication task is achieved.";
+
+  renderTask();
+  renderState();
+
+}
+
+function tryAgain() {
+
+  document.getElementById("learnerInput").value =
+    "";
+
+  document.getElementById("learnerInput").focus();
+
+  advance = false;
+
+  document.getElementById("advanceButton").disabled =
+    true;
+
+  document.getElementById("status").className =
+    "status waiting";
+
+  document.getElementById("status").innerHTML =
+    "○ WAITING — try the same communication task again.";
+
+  renderState();
+
+}
+
+function restart() {
+
+  currentTaskIndex = 0;
+  hintLevel = 0;
+  advance = false;
+  completedTasks = 0;
+
+  const input =
+    document.getElementById("learnerInput");
+
+  input.disabled = false;
+  input.value = "";
+
+  document.getElementById("advanceButton").disabled =
+    true;
+
+  document.getElementById("status").className =
+    "status waiting";
+
+  document.getElementById("status").innerHTML =
+    "○ WAITING — complete the current communication task.";
+
+  document.getElementById("validatorPanel").innerHTML =
+    "No response checked yet.";
+
+  document.getElementById("guardPanel").innerHTML =
+    "V0.6 checks communication function, intent and required information separately.";
+
+  renderTask();
+  renderState();
+
+}
+
+function renderTask() {
+
+  const task =
+    tasks[currentTaskIndex];
+
+  document.getElementById("taskNumber").innerHTML =
+    `<strong>Task ${currentTaskIndex + 1} of ${tasks.length}</strong>`;
+
+  document.getElementById("taskInstruction").textContent =
+    task.instruction;
+
+  document.getElementById("expectedFunction").textContent =
+    task.expectedFunction;
+
+  document.getElementById("expectedIntent").textContent =
+    task.expectedIntent;
+
+  document.getElementById("expectedInformation").textContent =
+    task.expectedInformation;
+
+}
+
+function renderState() {
+
+  const task =
+    tasks[currentTaskIndex];
+
+  document.getElementById("statePanel").innerHTML = `
+    currentTask: ${task.id}<br>
+    expectedFunction: ${task.expectedFunction}<br>
+    expectedIntent: ${task.expectedIntent}<br>
+    expectedInformation: ${task.expectedInformation}<br>
+    hintLevel: ${hintLevel}<br>
+    advance: ${advance}<br>
+    completedTasks: ${completedTasks}/${tasks.length}
+  `;
+
+}
+
+renderTask();
+renderState();
+
+</script>
+
+</body>
+</html>
