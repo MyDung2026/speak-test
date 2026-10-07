@@ -1,0 +1,749 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <title>SPEAK Semantic Validator V0.7</title>
+
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      background: #f5f7fb;
+      font-family: Arial, Helvetica, sans-serif;
+      color: #1f2937;
+    }
+
+    .container {
+      max-width: 900px;
+      margin: 40px auto;
+      padding: 20px;
+    }
+
+    h1 {
+      margin-bottom: 6px;
+    }
+
+    .subtitle {
+      color: #5b6472;
+      margin-bottom: 24px;
+    }
+
+    .card {
+      background: white;
+      border: 1px solid #d9dee7;
+      border-radius: 12px;
+      padding: 22px;
+      margin-bottom: 20px;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+    }
+
+    label {
+      display: block;
+      font-weight: bold;
+      margin-bottom: 7px;
+    }
+
+    input,
+    textarea {
+      width: 100%;
+      padding: 12px;
+      border: 1px solid #bfc7d2;
+      border-radius: 8px;
+      font-size: 15px;
+      background: white;
+    }
+
+    textarea {
+      min-height: 95px;
+      resize: vertical;
+    }
+
+    button {
+      border: 0;
+      border-radius: 8px;
+      padding: 13px 20px;
+      font-size: 15px;
+      font-weight: bold;
+      cursor: pointer;
+    }
+
+    #validateButton {
+      background: #111827;
+      color: white;
+      margin-top: 15px;
+    }
+
+    #validateButton:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+
+    #clearButton {
+      background: #e5e7eb;
+      color: #111827;
+      margin-left: 8px;
+    }
+
+    .status {
+      margin-top: 16px;
+      padding: 12px;
+      border-radius: 8px;
+      background: #f3f4f6;
+      font-weight: bold;
+    }
+
+    .status.success {
+      background: #ecfdf5;
+      color: #065f46;
+    }
+
+    .status.error {
+      background: #fef2f2;
+      color: #991b1b;
+    }
+
+    .result-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+
+    .result-item {
+      border: 1px solid #e1e5eb;
+      border-radius: 8px;
+      padding: 13px;
+      background: #fafafa;
+    }
+
+    .result-label {
+      font-size: 12px;
+      font-weight: bold;
+      color: #6b7280;
+      text-transform: uppercase;
+      margin-bottom: 6px;
+    }
+
+    .result-value {
+      font-size: 16px;
+      font-weight: bold;
+      word-break: break-word;
+    }
+
+    .match-true {
+      color: #047857;
+    }
+
+    .match-false {
+      color: #b91c1c;
+    }
+
+    .reason {
+      margin-top: 12px;
+      border: 1px solid #e1e5eb;
+      border-radius: 8px;
+      padding: 13px;
+      background: #fafafa;
+    }
+
+    pre {
+      white-space: pre-wrap;
+      word-break: break-word;
+      background: #111827;
+      color: #f9fafb;
+      padding: 16px;
+      border-radius: 8px;
+      overflow-x: auto;
+    }
+
+    .small {
+      font-size: 13px;
+      color: #6b7280;
+    }
+
+    @media (max-width: 650px) {
+      .grid,
+      .result-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .container {
+        margin: 15px auto;
+        padding: 12px;
+      }
+    }
+  </style>
+</head>
+
+<body>
+
+<div class="container">
+
+  <h1>SPEAK Semantic Validator V0.7</h1>
+
+  <div class="subtitle">
+    State Engine → Cloudflare Worker → Gemini Semantic Validator
+  </div>
+
+
+  <div class="card">
+
+    <h2>Current Communication Task</h2>
+
+    <div class="grid">
+
+      <div>
+        <label for="currentTask">
+          Current Task
+        </label>
+
+        <input
+          id="currentTask"
+          value="ASK_DESTINATION"
+        >
+      </div>
+
+
+      <div>
+        <label for="expectedFunction">
+          Expected Function
+        </label>
+
+        <input
+          id="expectedFunction"
+          value="ASK_QUESTION"
+        >
+      </div>
+
+
+      <div>
+        <label for="expectedIntent">
+          Expected Intent
+        </label>
+
+        <input
+          id="expectedIntent"
+          value="DESTINATION_QUERY"
+        >
+      </div>
+
+
+      <div>
+        <label for="expectedInformation">
+          Expected Information
+        </label>
+
+        <input
+          id="expectedInformation"
+          value="DESTINATION"
+        >
+      </div>
+
+    </div>
+
+  </div>
+
+
+  <div class="card">
+
+    <h2>Learner Transcript</h2>
+
+    <label for="learnerTranscript">
+      Type any learner sentence
+    </label>
+
+    <textarea
+      id="learnerTranscript"
+      placeholder="Example: Where would you like to travel?"
+    >Where would you like to travel?</textarea>
+
+    <button id="validateButton">
+      VALIDATE WITH AI
+    </button>
+
+    <button id="clearButton">
+      CLEAR
+    </button>
+
+    <div
+      id="status"
+      class="status"
+    >
+      Ready.
+    </div>
+
+  </div>
+
+
+  <div class="card">
+
+    <h2>Semantic Classification</h2>
+
+    <div class="result-grid">
+
+      <div class="result-item">
+        <div class="result-label">
+          Function
+        </div>
+
+        <div
+          id="resultFunction"
+          class="result-value"
+        >
+          —
+        </div>
+      </div>
+
+
+      <div class="result-item">
+        <div class="result-label">
+          Intent
+        </div>
+
+        <div
+          id="resultIntent"
+          class="result-value"
+        >
+          —
+        </div>
+      </div>
+
+
+      <div class="result-item">
+        <div class="result-label">
+          Information
+        </div>
+
+        <div
+          id="resultInformation"
+          class="result-value"
+        >
+          —
+        </div>
+      </div>
+
+
+      <div class="result-item">
+        <div class="result-label">
+          Confidence
+        </div>
+
+        <div
+          id="resultConfidence"
+          class="result-value"
+        >
+          —
+        </div>
+      </div>
+
+
+      <div class="result-item">
+        <div class="result-label">
+          Semantic Match
+        </div>
+
+        <div
+          id="resultMatch"
+          class="result-value"
+        >
+          —
+        </div>
+      </div>
+
+
+      <div class="result-item">
+        <div class="result-label">
+          HTTP Status
+        </div>
+
+        <div
+          id="httpStatus"
+          class="result-value"
+        >
+          —
+        </div>
+      </div>
+
+    </div>
+
+
+    <div class="reason">
+
+      <div class="result-label">
+        Reason
+      </div>
+
+      <div id="resultReason">
+        —
+      </div>
+
+    </div>
+
+  </div>
+
+
+  <div class="card">
+
+    <h2>Raw API Response</h2>
+
+    <pre id="rawResponse">Not tested yet.</pre>
+
+    <div class="small">
+      Prototype validation page for AI English Role-Play QR.
+      The State Engine remains responsible for task progression.
+    </div>
+
+  </div>
+
+</div>
+
+
+<script>
+
+  const API_URL =
+    "https://speak-test-api.ptmdung.workers.dev/validate";
+
+
+  const currentTask =
+    document.getElementById("currentTask");
+
+  const expectedFunction =
+    document.getElementById("expectedFunction");
+
+  const expectedIntent =
+    document.getElementById("expectedIntent");
+
+  const expectedInformation =
+    document.getElementById("expectedInformation");
+
+  const learnerTranscript =
+    document.getElementById("learnerTranscript");
+
+
+  const validateButton =
+    document.getElementById("validateButton");
+
+  const clearButton =
+    document.getElementById("clearButton");
+
+
+  const statusBox =
+    document.getElementById("status");
+
+  const httpStatus =
+    document.getElementById("httpStatus");
+
+  const resultFunction =
+    document.getElementById("resultFunction");
+
+  const resultIntent =
+    document.getElementById("resultIntent");
+
+  const resultInformation =
+    document.getElementById("resultInformation");
+
+  const resultConfidence =
+    document.getElementById("resultConfidence");
+
+  const resultMatch =
+    document.getElementById("resultMatch");
+
+  const resultReason =
+    document.getElementById("resultReason");
+
+  const rawResponse =
+    document.getElementById("rawResponse");
+
+
+  function resetResult() {
+
+    httpStatus.textContent = "—";
+
+    resultFunction.textContent = "—";
+
+    resultIntent.textContent = "—";
+
+    resultInformation.textContent = "—";
+
+    resultConfidence.textContent = "—";
+
+    resultMatch.textContent = "—";
+
+    resultMatch.className =
+      "result-value";
+
+    resultReason.textContent = "—";
+
+    rawResponse.textContent =
+      "Not tested yet.";
+
+  }
+
+
+  clearButton.addEventListener(
+    "click",
+    function () {
+
+      learnerTranscript.value = "";
+
+      resetResult();
+
+      statusBox.className =
+        "status";
+
+      statusBox.textContent =
+        "Ready.";
+
+      learnerTranscript.focus();
+
+    }
+  );
+
+
+  validateButton.addEventListener(
+    "click",
+    async function () {
+
+      const transcript =
+        learnerTranscript.value.trim();
+
+
+      if (!transcript) {
+
+        statusBox.className =
+          "status error";
+
+        statusBox.textContent =
+          "Please enter a learner transcript.";
+
+        return;
+
+      }
+
+
+      const payload = {
+
+        currentTask:
+          currentTask.value.trim(),
+
+        expectedFunction:
+          expectedFunction.value.trim(),
+
+        expectedIntent:
+          expectedIntent.value.trim(),
+
+        expectedInformation:
+          expectedInformation.value.trim(),
+
+        learnerTranscript:
+          transcript
+
+      };
+
+
+      validateButton.disabled = true;
+
+      statusBox.className =
+        "status";
+
+      statusBox.textContent =
+        "Validating with Gemini...";
+
+      resetResult();
+
+
+      try {
+
+        const response =
+          await fetch(
+            API_URL,
+            {
+              method: "POST",
+
+              headers: {
+                "Content-Type":
+                  "application/json"
+              },
+
+              body:
+                JSON.stringify(payload)
+            }
+          );
+
+
+        httpStatus.textContent =
+          response.status;
+
+
+        const responseText =
+          await response.text();
+
+
+        let data;
+
+
+        try {
+
+          data =
+            JSON.parse(responseText);
+
+        } catch (parseError) {
+
+          throw new Error(
+            "Server returned a non-JSON response."
+          );
+
+        }
+
+
+        rawResponse.textContent =
+          JSON.stringify(
+            data,
+            null,
+            2
+          );
+
+
+        if (!response.ok) {
+
+          throw new Error(
+            data.error ||
+            data.message ||
+            "API request failed."
+          );
+
+        }
+
+
+        const classification =
+          data.classification;
+
+
+        if (!classification) {
+
+          throw new Error(
+            "Classification was missing from the API response."
+          );
+
+        }
+
+
+        resultFunction.textContent =
+          classification.function ??
+          "—";
+
+
+        resultIntent.textContent =
+          classification.intent ??
+          "—";
+
+
+        resultInformation.textContent =
+          classification.information ??
+          "—";
+
+
+        resultConfidence.textContent =
+          classification.confidence ??
+          "—";
+
+
+        resultReason.textContent =
+          classification.reason ??
+          "—";
+
+
+        if (
+          classification.semanticMatch === true
+        ) {
+
+          resultMatch.textContent =
+            "TRUE — TASK MATCH";
+
+          resultMatch.className =
+            "result-value match-true";
+
+        }
+
+        else if (
+          classification.semanticMatch === false
+        ) {
+
+          resultMatch.textContent =
+            "FALSE — TASK DOES NOT MATCH";
+
+          resultMatch.className =
+            "result-value match-false";
+
+        }
+
+        else {
+
+          resultMatch.textContent =
+            "UNKNOWN";
+
+          resultMatch.className =
+            "result-value";
+
+        }
+
+
+        statusBox.className =
+          "status success";
+
+        statusBox.textContent =
+          "Semantic validation completed successfully.";
+
+      }
+
+      catch (error) {
+
+        statusBox.className =
+          "status error";
+
+        statusBox.textContent =
+          "ERROR: " +
+          error.message;
+
+      }
+
+      finally {
+
+        validateButton.disabled =
+          false;
+
+      }
+
+    }
+  );
+
+
+  learnerTranscript.addEventListener(
+    "keydown",
+    function (event) {
+
+      if (
+        event.ctrlKey &&
+        event.key === "Enter"
+      ) {
+
+        validateButton.click();
+
+      }
+
+    }
+  );
+
+</script>
+
+</body>
+</html>
