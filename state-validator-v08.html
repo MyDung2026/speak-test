@@ -1,0 +1,515 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SPEAK State + Semantic Validator V0.8</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#f2f5fa;color:#17243b;font-family:Arial,sans-serif;line-height:1.5}
+main{max-width:780px;margin:30px auto;padding:16px}
+h1{color:#123b80;font-size:25px;margin-bottom:4px}
+.subtitle{color:#64748b;font-size:13px;margin-bottom:20px}
+.panel{background:white;border:1px solid #d8e0eb;border-radius:12px;padding:20px;margin-bottom:14px}
+h2{font-size:17px;margin:0 0 12px}
+label{display:block;font-size:13px;font-weight:bold;margin-bottom:5px}
+input,textarea{width:100%;padding:11px;border:1px solid #b8c6da;border-radius:7px;font-size:15px;font-family:inherit}
+textarea{min-height:90px;resize:vertical}
+button{padding:11px 15px;border:0;border-radius:7px;background:#123b80;color:white;font-weight:bold;cursor:pointer;margin:4px 5px 4px 0}
+button.secondary{background:#64748b}
+button.success{background:#008b70}
+button:disabled{opacity:.4;cursor:not-allowed}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.task{background:#eaf2ff;padding:15px;border-radius:8px}
+.status{padding:12px;border-radius:8px;margin-top:12px;font-weight:bold}
+.wait{background:#edf1f6}
+.pass{background:#d8f7e5;color:#075a31}
+.fail{background:#fff0bd;color:#805000}
+.error{background:#ffe2e2;color:#9a1717}
+.hint{background:#fff8dc;border-left:4px solid #e4a500;padding:13px;margin-top:10px}
+.small{font-size:13px;color:#52627a}
+pre{white-space:pre-wrap;word-break:break-word;background:#101827;color:#e8f2ff;padding:14px;border-radius:8px;font-size:12px;max-height:270px;overflow:auto}
+.value{font-weight:bold;color:#123b80}
+.row{margin:5px 0}
+.hidden{display:none}
+@media(max-width:560px){.grid{grid-template-columns:1fr}main{margin:5px auto;padding:10px}.panel{padding:15px}}
+</style>
+</head>
+<body>
+<main>
+<h1>🧠 SPEAK State + Semantic Validator V0.8</h1>
+<div class="subtitle">
+State Engine → Cloudflare Worker → Gemini Semantic Validator
+</div>
+
+<section class="panel">
+<h2>Practice Scenario</h2>
+<div class="task">
+<div><b>Topic:</b> Booking a Tour</div>
+<div><b>Student role:</b> Travel Agent</div>
+<div><b>AI role:</b> Tourist</div>
+<div><b>Progress:</b> <span id="progress">1 / 6</span></div>
+<hr>
+<div id="taskDescription"></div>
+<div class="small" id="taskRequirements"></div>
+</div>
+</section>
+
+<section class="panel">
+<h2>Learner Response</h2>
+<label for="transcript">Enter a learner sentence for testing</label>
+<textarea id="transcript" placeholder="Type the learner response here"></textarea>
+<div>
+<button id="checkBtn">✓ VALIDATE WITH AI</button>
+<button id="retryBtn" class="secondary">↻ TRY AGAIN</button>
+<button id="advanceBtn" disabled>→ ADVANCE</button>
+<button id="restartBtn" class="secondary">↻ RESTART</button>
+</div>
+<div id="status" class="status wait">Ready. Complete the current task.</div>
+<div id="hintBox" class="hint hidden"></div>
+</section>
+
+<section class="panel">
+<h2>State Engine</h2>
+<div class="grid">
+<div class="row">Current task: <span class="value" id="stateTask"></span></div>
+<div class="row">Hint level: <span class="value" id="stateHint"></span></div>
+<div class="row">Advance unlocked: <span class="value" id="stateAdvance"></span></div>
+<div class="row">Completed: <span class="value" id="stateCompleted"></span></div>
+</div>
+<p class="small">Only the State Engine may unlock the next task. Gemini cannot change the task number or hint level.</p>
+</section>
+
+<section class="panel">
+<h2>AI Semantic Classification</h2>
+<div class="grid">
+<div>Function: <b id="resultFunction">—</b></div>
+<div>Intent: <b id="resultIntent">—</b></div>
+<div>Information: <b id="resultInformation">—</b></div>
+<div>Confidence: <b id="resultConfidence">—</b></div>
+<div>Semantic match: <b id="resultMatch">—</b></div>
+<div>HTTP status: <b id="resultHttp">—</b></div>
+</div>
+<p>Reason: <span id="resultReason">—</span></p>
+</section>
+
+<section class="panel">
+<h2>Raw API Response</h2>
+<pre id="rawResponse">Not tested yet.</pre>
+</section>
+
+<section class="panel">
+<h2>Test Notes</h2>
+<p class="small">
+This is a teacher testing prototype, not the finished student SPEAK application.
+It tests typed transcripts only. Microphone, AI voice, student records and final
+learning reports are not implemented in this version.
+</p>
+</section>
+</main>
+
+<script>
+"use strict";
+
+const API_URL =
+  "https://speak-test-api.ptmdung.workers.dev/validate";
+
+const tasks = [
+  {
+    id:"ASK_DESTINATION",
+    description:"Ask the tourist where they would like to travel.",
+    expectedFunction:"ASK_QUESTION",
+    expectedIntent:"DESTINATION_QUERY",
+    expectedInformation:"DESTINATION",
+    hints:[
+      "ask • destination",
+      "Where would you like to ______?",
+      "Where would you like to travel?"
+    ]
+  },
+  {
+    id:"GIVE_ACTIVITY_INFORMATION",
+    description:"Tell the tourist about activities included in the tour.",
+    expectedFunction:"GIVE_INFORMATION",
+    expectedIntent:"ACTIVITY_INFORMATION",
+    expectedInformation:"ACTIVITY",
+    hints:[
+      "activities • sightseeing • local food",
+      "The tour includes ______.",
+      "The tour includes sightseeing and local food."
+    ]
+  },
+  {
+    id:"ASK_ACCOMMODATION",
+    description:"Ask the tourist about their accommodation preference.",
+    expectedFunction:"ASK_QUESTION",
+    expectedIntent:"ACCOMMODATION_QUERY",
+    expectedInformation:"ACCOMMODATION",
+    hints:[
+      "ask • hotel • accommodation",
+      "Where would you like to ______?",
+      "Where would you like to stay?"
+    ]
+  },
+  {
+    id:"ASK_DURATION",
+    description:"Ask the tourist how long they want to stay.",
+    expectedFunction:"ASK_QUESTION",
+    expectedIntent:"DURATION_QUERY",
+    expectedInformation:"DURATION",
+    hints:[
+      "ask • how long • nights",
+      "How many nights would you like to ______?",
+      "How many nights would you like to stay?"
+    ]
+  },
+  {
+    id:"GIVE_PRICE_INFORMATION",
+    description:"Tell the tourist the price of the tour.",
+    expectedFunction:"GIVE_INFORMATION",
+    expectedIntent:"PRICE_INFORMATION",
+    expectedInformation:"PRICE",
+    hints:[
+      "price • costs • dollars",
+      "The tour costs ______.",
+      "The tour costs 150 dollars."
+    ]
+  },
+  {
+    id:"CONFIRM_BOOKING",
+    description:"Confirm the tourist's booking.",
+    expectedFunction:"CONFIRM",
+    expectedIntent:"BOOKING_CONFIRMATION",
+    expectedInformation:"BOOKING",
+    hints:[
+      "confirm • booking • reserved",
+      "Your booking is ______.",
+      "Your booking is confirmed."
+    ]
+  }
+];
+
+let currentIndex = 0;
+let completedTasks = 0;
+let hintLevel = 0;
+let advanceUnlocked = false;
+let busy = false;
+let requestId = 0;
+
+const el = id => document.getElementById(id);
+
+function currentTask(){
+  return tasks[currentIndex];
+}
+
+function setStatus(message,type="wait"){
+  el("status").textContent=message;
+  el("status").className="status "+type;
+}
+
+function clearResults(){
+  for(const id of [
+    "resultFunction","resultIntent","resultInformation",
+    "resultConfidence","resultMatch","resultHttp","resultReason"
+  ]){
+    el(id).textContent="—";
+  }
+  el("rawResponse").textContent="Not tested yet.";
+}
+
+function showHint(){
+  if(hintLevel===0){
+    el("hintBox").classList.add("hidden");
+    el("hintBox").textContent="";
+    return;
+  }
+  el("hintBox").classList.remove("hidden");
+  el("hintBox").textContent=
+    "💡 Hint "+hintLevel+": "+
+    currentTask().hints[hintLevel-1];
+}
+
+function render(){
+  const t=currentTask();
+
+  el("progress").textContent=
+    (currentIndex+1)+" / "+tasks.length;
+
+  el("taskDescription").textContent=t.description;
+
+  el("taskRequirements").textContent=
+    "Function: "+t.expectedFunction+
+    " | Intent: "+t.expectedIntent+
+    " | Information: "+t.expectedInformation;
+
+  el("stateTask").textContent=t.id;
+  el("stateHint").textContent=String(hintLevel);
+  el("stateAdvance").textContent=String(advanceUnlocked);
+  el("stateCompleted").textContent=
+    completedTasks+" / "+tasks.length;
+
+  el("advanceBtn").disabled=!advanceUnlocked||busy;
+  el("checkBtn").disabled=busy;
+  el("retryBtn").disabled=busy;
+  el("restartBtn").disabled=busy;
+
+  showHint();
+}
+
+function normalize(value){
+  return String(value||"").trim().toUpperCase();
+}
+
+function displayClassification(c,httpStatus){
+  el("resultFunction").textContent=c.function??"—";
+  el("resultIntent").textContent=c.intent??"—";
+  el("resultInformation").textContent=c.information??"—";
+  el("resultConfidence").textContent=c.confidence??"—";
+  el("resultMatch").textContent=String(c.semanticMatch);
+  el("resultHttp").textContent=String(httpStatus);
+  el("resultReason").textContent=c.reason??"—";
+}
+
+async function validate(){
+  if(busy||advanceUnlocked)return;
+
+  const transcript=el("transcript").value.trim();
+
+  if(!transcript){
+    setStatus("Please enter a learner sentence.","fail");
+    return;
+  }
+
+  const t=currentTask();
+  const thisRequest=++requestId;
+
+  busy=true;
+  render();
+  setStatus("Checking the learner response with AI...");
+
+  const payload={
+    currentTask:t.id,
+    expectedFunction:t.expectedFunction,
+    expectedIntent:t.expectedIntent,
+    expectedInformation:t.expectedInformation,
+    learnerTranscript:transcript
+  };
+
+  try{
+    const controller=new AbortController();
+    const timeout=setTimeout(
+      ()=>controller.abort(),30000
+    );
+
+    let response;
+
+    try{
+      response=await fetch(API_URL,{
+        method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body:JSON.stringify(payload),
+        signal:controller.signal
+      });
+    }finally{
+      clearTimeout(timeout);
+    }
+
+    const bodyText=await response.text();
+
+    if(thisRequest!==requestId)return;
+
+    let data;
+
+    try{
+      data=JSON.parse(bodyText);
+    }catch{
+      throw new Error(
+        "The API returned a non-JSON response. HTTP "+
+        response.status
+      );
+    }
+
+    el("rawResponse").textContent=
+      JSON.stringify(data,null,2);
+
+    el("resultHttp").textContent=
+      String(response.status);
+
+    if(!response.ok||data.ok!==true){
+      throw new Error(
+        data.error||data.message||
+        "API request failed. HTTP "+response.status
+      );
+    }
+
+    const c=data.classification;
+
+    if(!c||typeof c!=="object"){
+      throw new Error(
+        "API response does not contain classification."
+      );
+    }
+
+    displayClassification(c,response.status);
+
+    const validShape=
+      typeof c.function==="string" &&
+      typeof c.intent==="string" &&
+      typeof c.information==="string" &&
+      typeof c.semanticMatch==="boolean" &&
+      ["HIGH","MEDIUM","LOW"].includes(
+        normalize(c.confidence)
+      );
+
+    if(!validShape){
+      throw new Error(
+        "AI classification is incomplete or invalid."
+      );
+    }
+
+    const functionMatch=
+      normalize(c.function)===t.expectedFunction;
+
+    const intentMatch=
+      normalize(c.intent)===t.expectedIntent;
+
+    const informationMatch=
+      normalize(c.information)===t.expectedInformation;
+
+    const semanticMatch=c.semanticMatch===true;
+
+    const confidenceHigh=
+      normalize(c.confidence)==="HIGH";
+
+    const pass=
+      functionMatch &&
+      intentMatch &&
+      informationMatch &&
+      semanticMatch &&
+      confidenceHigh;
+
+    if(pass){
+      advanceUnlocked=true;
+      setStatus(
+        "PASS — Current task achieved. ADVANCE is unlocked.",
+        "pass"
+      );
+    }else if(
+      normalize(c.confidence)==="LOW"
+    ){
+      setStatus(
+        "UNCERTAIN — Please say or enter the sentence again. No hint penalty.",
+        "fail"
+      );
+    }else if(
+      normalize(c.confidence)==="MEDIUM" &&
+      semanticMatch &&
+      functionMatch &&
+      intentMatch &&
+      informationMatch
+    ){
+      setStatus(
+        "UNCERTAIN — Meaning may be correct. Please try again. No hint penalty.",
+        "fail"
+      );
+    }else{
+      hintLevel=Math.min(3,hintLevel+1);
+      setStatus(
+        "NEEDS SUPPORT — Stay on the current task. Do not advance.",
+        "fail"
+      );
+    }
+
+  }catch(error){
+    if(thisRequest!==requestId)return;
+
+    const message=error.name==="AbortError"
+      ?"The API took too long. Please try again."
+      :error.message;
+
+    setStatus("ERROR: "+message,"error");
+
+  }finally{
+    if(thisRequest===requestId){
+      busy=false;
+      render();
+    }
+  }
+}
+
+function advance(){
+  if(busy||!advanceUnlocked)return;
+
+  completedTasks++;
+  advanceUnlocked=false;
+  hintLevel=0;
+  requestId++;
+
+  if(currentIndex===tasks.length-1){
+    setStatus(
+      "ALL 6 TASKS COMPLETED — Prototype test finished.",
+      "pass"
+    );
+    el("advanceBtn").disabled=true;
+    el("checkBtn").disabled=true;
+    el("transcript").disabled=true;
+    el("stateCompleted").textContent=
+      completedTasks+" / "+tasks.length;
+    return;
+  }
+
+  currentIndex++;
+  el("transcript").value="";
+  clearResults();
+  setStatus(
+    "Previous task completed. Complete the next task."
+  );
+  render();
+}
+
+function retry(){
+  if(busy)return;
+  el("transcript").value="";
+  clearResults();
+
+  if(advanceUnlocked){
+    setStatus(
+      "Current task already passed. Click ADVANCE.",
+      "pass"
+    );
+  }else{
+    setStatus(
+      "Try the current task again. Hint level is preserved."
+    );
+  }
+
+  render();
+  el("transcript").focus();
+}
+
+function restart(){
+  if(busy)return;
+
+  requestId++;
+  currentIndex=0;
+  completedTasks=0;
+  hintLevel=0;
+  advanceUnlocked=false;
+
+  el("transcript").disabled=false;
+  el("transcript").value="";
+  clearResults();
+  setStatus("Ready. Complete the first task.");
+  render();
+}
+
+el("checkBtn").addEventListener("click",validate);
+el("advanceBtn").addEventListener("click",advance);
+el("retryBtn").addEventListener("click",retry);
+el("restartBtn").addEventListener("click",restart);
+
+render();
+</script>
+</body>
+</html>
