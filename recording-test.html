@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>SPEAK Recording Test - START / STOP</title>
+<style>
+:root{font-family:Arial,Helvetica,sans-serif;color:#17243b;background:#f2f5fa}*{box-sizing:border-box}body{margin:0;padding:24px 12px}.wrap{max-width:680px;margin:auto}h1{font-size:23px;color:#153c7c;margin-bottom:6px}.sub{font-size:14px;color:#536277;margin:0 0 20px}.panel{background:#fff;border:1px solid #d9e1ed;border-radius:12px;padding:20px;margin-bottom:14px}h2{font-size:17px;margin:0 0 12px}.prompt{background:#eaf2ff;padding:13px;border-radius:8px;line-height:1.6;font-size:17px}button{border:0;border-radius:7px;padding:12px 15px;font-size:14px;font-weight:bold;cursor:pointer;margin:5px 6px 5px 0}button:disabled{cursor:not-allowed;opacity:.43}.start{background:#087d57;color:#fff}.stop{background:#b91c1c;color:#fff}.send{background:#163d8a;color:#fff}.secondary{background:#dfe7f2;color:#182b46}.status{background:#edf2f8;border-radius:8px;padding:12px;line-height:1.6;white-space:pre-wrap;overflow-wrap:anywhere}.error{background:#fff0ed;color:#a5271a}.ok{background:#e8f8ef;color:#0e683c}audio{width:100%;margin-top:12px}.hint{font-size:13px;color:#536277;line-height:1.6}.transcript{font-size:19px;line-height:1.6;white-space:pre-wrap;overflow-wrap:anywhere;min-height:40px}details{margin-top:12px}pre{font-size:12px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;max-height:280px;background:#f5f7fa;padding:10px;border-radius:7px}small{color:#536277}
+</style>
+</head>
+<body><main class="wrap">
+<h1>🎙️ SPEAK — Recording Test</h1>
+<p class="sub">Kiểm tra ghi âm START/STOP và chuyển tiếng Anh thành chữ · Chưa chấm điểm</p>
+<section class="panel"><h2>1. Câu nói thử</h2><div class="prompt" lang="en">The tour includes sightseeing and local food.</div><p class="hint">Bạn có thể suy nghĩ trước khi START, và tạm dừng giữa câu. Nhấn STOP khi nói xong.</p></section>
+<section class="panel"><h2>2. Ghi âm</h2>
+<button id="start" class="start">🎤 START RECORDING</button><button id="stop" class="stop" disabled>■ STOP RECORDING</button><button id="again" class="secondary" disabled>↻ RECORD AGAIN</button>
+<div id="status" class="status" role="status" aria-live="polite">Sẵn sàng. Nhấn START RECORDING khi muốn nói.</div>
+<p id="duration" class="hint"></p>
+<audio id="player" controls hidden></audio>
+<p class="hint">Hãy nghe lại bản ghi trước khi gửi. Nếu nghe không rõ, nhấn RECORD AGAIN.</p></section>
+<section class="panel"><h2>3. Chuyển âm thanh thành chữ</h2>
+<button id="send" class="send" disabled>✉ TRANSCRIBE</button>
+<p class="hint">Khi nhấn TRANSCRIBE, bản ghi âm sẽ được gửi tới Cloudflare Worker và dịch vụ Gemini. Chỉ dùng giọng nói thử nghiệm; không ghi thông tin cá nhân.</p>
+<div id="result" class="status" role="status" aria-live="polite">Chưa gửi bản ghi.</div>
+<h2 style="margin-top:20px">You said:</h2><div id="transcript" class="transcript">—</div>
+<details><summary>Chi tiết phản hồi kỹ thuật (dùng để tìm lỗi)</summary><pre id="raw">Chưa có phản hồi.</pre></details>
+</section>
+<p class="hint">Trang thử nghiệm chỉ kiểm tra ghi âm và nhận dạng lời nói. Không đánh giá phát âm hay ngữ pháp. Không tự động lưu bản ghi vào GitHub; tuy nhiên dịch vụ nhận dạng có thể xử lý dữ liệu theo chính sách của nhà cung cấp.</p>
+</main>
+<script>
+(()=>{'use strict';
+const API='https://speak-test-api.ptmdung.workers.dev/transcribe';
+const MAX_BYTES=8*1024*1024;
+const $=id=>document.getElementById(id);
+const start=$('start'),stop=$('stop'),again=$('again'),send=$('send'),player=$('player'),status=$('status'),duration=$('duration'),result=$('result'),transcript=$('transcript'),raw=$('raw');
+let recorder=null,stream=null,chunks=[],blob=null,blobURL=null,started=0,ticker=null,busy=false;
+function setStatus(message,type=''){status.className='status '+type;status.textContent=message;}
+function setResult(message,type=''){result.className='status '+type;result.textContent=message;}
+function releaseStream(){if(stream){stream.getTracks().forEach(t=>t.stop());stream=null;}}
+function resetAudio(){if(blobURL){URL.revokeObjectURL(blobURL);blobURL=null;}player.pause();player.removeAttribute('src');player.load();player.hidden=true;blob=null;chunks=[];send.disabled=true;transcript.textContent='—';raw.textContent='Chưa có phản hồi.';setResult('Chưa gửi bản ghi.');duration.textContent='';}
+function updateTimer(){duration.textContent='Thời gian ghi: '+Math.floor((Date.now()-started)/1000)+' giây';}
+function mimeChoice(){const options=['audio/webm;codecs=opus','audio/webm','audio/mp4'];return options.find(t=>MediaRecorder.isTypeSupported(t))||'';}
+async function begin(){if(busy||recorder?.state==='recording')return;if(!navigator.mediaDevices?.getUserMedia||!window.MediaRecorder){setStatus('Trình duyệt này không hỗ trợ ghi âm MediaRecorder. Hãy thử Chrome mới nhất.','error');return;}
+resetAudio();start.disabled=true;again.disabled=true;setStatus('Đang yêu cầu quyền micro...');
+try{stream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true},video:false});const mime=mimeChoice();recorder=mime?new MediaRecorder(stream,{mimeType:mime}):new MediaRecorder(stream);chunks=[];
+recorder.ondataavailable=e=>{if(e.data&&e.data.size)chunks.push(e.data);};
+recorder.onerror=e=>{clearInterval(ticker);releaseStream();start.disabled=false;stop.disabled=true;again.disabled=false;setStatus('Lỗi ghi âm: '+(e.error?.message||'Không xác định'),'error');};
+recorder.onstop=()=>{clearInterval(ticker);releaseStream();stop.disabled=true;start.disabled=false;again.disabled=false;blob=new Blob(chunks,{type:recorder.mimeType||mime||'audio/webm'});if(!blob.size){setStatus('Không có âm thanh trong bản ghi. Hãy thử lại.','error');return;}blobURL=URL.createObjectURL(blob);player.src=blobURL;player.hidden=false;send.disabled=blob.size>MAX_BYTES;setStatus('Đã dừng ghi âm. Dung lượng: '+Math.round(blob.size/1024)+' KB. Hãy nghe lại trước khi nhấn TRANSCRIBE.'+(blob.size>MAX_BYTES?' File quá lớn, hãy ghi ngắn hơn.':''),blob.size>MAX_BYTES?'error':'ok');};
+recorder.start(1000);started=Date.now();updateTimer();ticker=setInterval(updateTimer,500);stop.disabled=false;setStatus('🔴 ĐANG GHI ÂM. Bạn có thể nói chậm, tạm dừng và nhấn STOP khi xong.');
+}catch(e){releaseStream();start.disabled=false;stop.disabled=true;again.disabled=!!blob;setStatus('Không mở được micro: '+e.message+'. Kiểm tra quyền micro trên Chrome.','error');}}
+function end(){if(recorder?.state==='recording'){stop.disabled=true;setStatus('Đang hoàn tất bản ghi...');recorder.stop();}}
+function extractText(data){const candidates=[data?.transcript,data?.text,data?.transcription,data?.result?.transcript,data?.result?.text,data?.data?.transcript,data?.data?.text];for(const x of candidates){if(typeof x==='string'&&x.trim())return x.trim();}return '';}
+async function transcribe(){if(!blob||busy)return;busy=true;send.disabled=true;start.disabled=true;again.disabled=true;setResult('Đang gửi âm thanh và chờ Gemini chuyển thành chữ...');transcript.textContent='—';raw.textContent='Đang chờ...';
+try{const response=await fetch(API,{method:'POST',headers:{'Content-Type':blob.type.split(';')[0]||'audio/webm'},body:blob});const bodyText=await response.text();let data;try{data=JSON.parse(bodyText);}catch{data={rawResponse:bodyText.slice(0,4000)};}raw.textContent=JSON.stringify({httpStatus:response.status,body:data},null,2);
+if(!response.ok||data.ok===false){setResult('Không chuyển được âm thanh. HTTP '+response.status+'. '+(data.error||data.message||'Xem chi tiết phản hồi bên dưới.'),'error');return;}
+const text=extractText(data);if(text){transcript.textContent=text;setResult('Đã nhận kết quả. Hãy so sánh với câu bạn thực sự nói.','ok');}else{setResult('Worker đã phản hồi HTTP '+response.status+' nhưng chưa tìm thấy văn bản ở các trường thông dụng. Hãy mở “Chi tiết phản hồi kỹ thuật” để kiểm tra.','error');}}
+catch(e){raw.textContent=String(e);setResult('Không kết nối được Worker: '+e.message+'. Kiểm tra mạng hoặc CORS.','error');}
+finally{busy=false;start.disabled=false;again.disabled=false;send.disabled=!blob||blob.size>MAX_BYTES;}}
+start.addEventListener('click',begin);stop.addEventListener('click',end);again.addEventListener('click',()=>{if(recorder?.state==='recording')return;resetAudio();begin();});send.addEventListener('click',transcribe);window.addEventListener('pagehide',()=>{if(recorder?.state==='recording')recorder.stop();releaseStream();if(blobURL)URL.revokeObjectURL(blobURL);});
+})();
+</script></body></html>
