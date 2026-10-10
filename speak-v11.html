@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AI English Role-Play QR — SPEAK V1.1</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#f2f5fa;color:#17243b;font:16px/1.5 Arial,sans-serif}main{max-width:740px;margin:20px auto;padding:12px}h1{font-size:25px;color:#123b80;margin:0 0 4px}.sub{color:#64748b;font-size:13px;margin:0 0 18px}.panel{background:white;border:1px solid #d8e0eb;border-radius:13px;padding:18px;margin-bottom:13px}h2{font-size:18px;margin:0 0 10px}.speech{background:#eaf2ff;border-radius:9px;padding:15px;font-size:18px}.transcript{background:#f8fafc;border:1px solid #cbd5e1;border-radius:9px;padding:15px;min-height:66px;white-space:pre-wrap;font-size:17px}button{background:#123b80;color:white;border:0;border-radius:8px;padding:11px 14px;margin:5px 5px 5px 0;font-weight:700;cursor:pointer}button:disabled{opacity:.45;cursor:not-allowed}.green{background:#087d64}.gray{background:#64748b}.status{background:#e9eef5;border-radius:8px;padding:12px;margin-top:10px}.pass{background:#dcfce7;color:#166534}.fail{background:#fef3c7;color:#92400e}.error{background:#fee2e2;color:#991b1b}.hint{background:#fff8dc;border-left:4px solid #d9a500;padding:12px;margin-top:10px}.hidden{display:none}.small{font-size:13px;color:#52627a}.grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}.value{font-weight:bold;color:#123b80}.steps{display:flex;gap:5px;margin:12px 0;flex-wrap:wrap}.step{padding:5px 9px;border-radius:20px;background:#e2e8f0;font-size:12px}.step.done{background:#dcfce7}.step.active{background:#dbeafe;font-weight:bold}.log{white-space:pre-wrap;max-height:230px;overflow:auto;background:#f8fafc;border:1px solid #d8e0eb;border-radius:8px;padding:12px;font-size:13px}.summary{background:#eaf7ef;border-radius:10px;padding:14px}.summary strong{font-size:20px}@media(max-width:560px){main{margin:0;padding:9px}.panel{padding:14px}.grid{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<main>
+<h1>🎤 AI ENGLISH ROLE-PLAY QR</h1>
+<p class="sub">SPEAK V1.1 · Booking a Tour · Six Communication Tasks</p>
+<section class="panel">
+<h2>Booking a Tour</h2>
+<p><b>Your role:</b> Travel Agent &nbsp; · &nbsp; <b>AI role:</b> Tourist</p>
+<p class="small" id="progressText">Task 1 of 6</p><div class="steps" id="steps"></div>
+<div class="speech" id="aiText">Hi! I'd like to book a tour, please.</div>
+<button id="listenBtn">🔊 LISTEN AGAIN</button>
+<p class="small" id="voiceInfo">Loading voices...</p>
+<p><b>Your task:</b> <span id="taskText">Ask the tourist where they would like to travel.</span></p>
+</section>
+<section class="panel">
+<h2>Your Turn</h2>
+<button class="green" id="speakBtn">🎤 START RECORDING</button><button id="stopBtn" disabled>■ STOP RECORDING</button><button class="gray" id="againBtn">↻ RECORD AGAIN</button>
+<p id="recordingTime" class="small">Recording time: 0 seconds</p><audio id="playback" controls class="hidden" style="width:100%;margin-top:8px"></audio>
+<p class="small" id="micInfo">Microphone is not active.</p>
+<h2>You said:</h2><div class="transcript" id="transcript">Your speech will appear here.</div>
+<p class="small">STOP RECORDING automatically sends audio to Gemini for transcription. Listen again or RECORD AGAIN if the transcript is wrong. Confirm only if the words match what you said.</p>
+<button id="confirmBtn" disabled>✓ CONFIRM TRANSCRIPT</button>
+<button class="green hidden" id="nextBtn">NEXT TASK →</button>
+<div class="status" id="status">Ready. Listen to the AI, then speak.</div>
+<div class="hint hidden" id="hintBox"></div>
+</section>
+<section class="panel">
+<h2>Progress &amp; Evaluation</h2>
+<div class="grid"><div>Completed: <span class="value" id="completed">0 / 6</span></div><div>Hint level: <span class="value" id="hintLevel">0</span></div><div>Task achieved: <span class="value" id="achieved">false</span></div><div>Recognition status: <span class="value" id="recognitionStatus">READY</span></div><div>Confidence: <span class="value" id="confidence">—</span></div><div>HTTP status: <span class="value" id="httpStatus">—</span></div></div>
+<p class="small" id="reason"></p>
+</section>
+<section class="panel hidden" id="summaryPanel"><h2>Session Summary</h2><div class="summary" id="summary"></div><p class="small">This is a formative task-completion report, not a pronunciation score. Results are not saved to a teacher account.</p></section>
+<section class="panel"><h2>Conversation Record</h2><div class="log" id="log">The conversation will appear here.</div><button class="gray" id="resetBtn">↻ RESET SESSION</button><p class="small">Prototype: audio is recorded temporarily in this browser and sent to Cloudflare Worker /transcribe and Google Gemini when you press STOP. No audio is intentionally stored in GitHub or a teacher account. Provider processing and retention policies may apply. Transcription can be inaccurate; grammar and pronunciation are not reliably assessed from transcript alone. Confirmed transcript text is sent to /validate.</p></section>
+</main>
+<script>
+'use strict';
+const API_URL='https://speak-test-api.ptmdung.workers.dev/validate';
+const tasks=[
+ {id:'ASK_DESTINATION',fn:'ASK_QUESTION',intent:'DESTINATION_QUERY',info:'DESTINATION',ai:"Hi! I'd like to book a tour, please.",instruction:'Ask the tourist where they would like to travel.',hints:['ask • destination','Where would you like to ______?','Where would you like to travel?']},
+ {id:'GIVE_ACTIVITY_INFORMATION',fn:'GIVE_INFORMATION',intent:'ACTIVITY_INFORMATION',info:'ACTIVITY',ai:'I would like to visit some interesting places. What activities does the tour include?',instruction:'Tell the tourist what activities the tour includes.',hints:['give • activities','The tour includes sightseeing and ______.','The tour includes sightseeing and local food.']},
+ {id:'ASK_ACCOMMODATION',fn:'ASK_QUESTION',intent:'ACCOMMODATION_QUERY',info:'ACCOMMODATION',ai:'That sounds great. I also need a place to stay.',instruction:'Ask the tourist where they would like to stay.',hints:['ask • accommodation','Where would you like to ______?','Where would you like to stay?']},
+ {id:'ASK_DURATION',fn:'ASK_QUESTION',intent:'DURATION_QUERY',info:'DURATION',ai:'A hotel would be nice. I am not sure how long to stay.',instruction:'Ask how many nights the tourist would like to stay.',hints:['ask • duration','How many nights would you like to ______?','How many nights would you like to stay?']},
+ {id:'GIVE_PRICE_INFORMATION',fn:'GIVE_INFORMATION',intent:'PRICE_INFORMATION',info:'PRICE',ai:'I would like to stay for three nights. How much does the tour cost?',instruction:'Tell the tourist the tour price.',hints:['give • price','The tour costs ______ dollars.','The tour costs 150 dollars.']},
+ {id:'CONFIRM_BOOKING',fn:'CONFIRM',intent:'BOOKING_CONFIRMATION',info:'BOOKING',ai:'That price sounds good. Please book the tour for me.',instruction:'Confirm the tourist’s booking.',hints:['confirm • booking','Your booking is ______.','Your booking is confirmed.']}
+];
+const $=id=>document.getElementById(id);
+const TRANSCRIBE_URL='https://speak-test-api.ptmdung.workers.dev/transcribe';
+const CAN_RECORD=!!(navigator.mediaDevices&&navigator.mediaDevices.getUserMedia&&window.MediaRecorder);
+let index=0,results=[],hint=0,achieved=false,listening=false,processing=false,ready=false,spoken='',requestToken=0,selectedVoice=null;
+let recorder=null,stream=null,chunks=[],audioBlob=null,audioUrl=null,recordStarted=0,recordTimer=null,recordToken=0,transcribing=false;
+const MAX_RECORD_MS=60000;
+function releaseMic(){if(stream){stream.getTracks().forEach(t=>t.stop());stream=null}}
+function stopClock(){if(recordTimer){clearInterval(recordTimer);recordTimer=null}}
+function clearAudio(){if(audioUrl){URL.revokeObjectURL(audioUrl);audioUrl=null}audioBlob=null;$('playback').pause();$('playback').removeAttribute('src');$('playback').load();$('playback').classList.add('hidden')}
+function norm(s){return String(s??'').trim().toUpperCase()}
+function status(s,kind=''){$('status').textContent=s;$('status').className='status'+(kind?' '+kind:'')}
+function voiceLoad(){if(!('speechSynthesis'in window)){$('voiceInfo').textContent='Speech playback unavailable.';return}const v=speechSynthesis.getVoices();if(!v.length){$('voiceInfo').textContent='Waiting for voices...';return}selectedVoice=v.find(x=>x.name.toLowerCase().includes('google us english')&&x.lang.toLowerCase().startsWith('en'))||v.find(x=>x.lang.toLowerCase()==='en-us')||v.find(x=>x.lang.toLowerCase().startsWith('en'))||null;$('voiceInfo').textContent=selectedVoice?'Selected voice: '+selectedVoice.name+' ('+selectedVoice.lang+')':'Using browser default voice.'}
+function stopAudio(){if('speechSynthesis'in window)speechSynthesis.cancel()}
+function say(){if(!('speechSynthesis'in window)){status('Audio is unavailable in this browser.','error');return}voiceLoad();stopAudio();const u=new SpeechSynthesisUtterance(tasks[index].ai);u.lang='en-US';u.rate=1;u.pitch=1;if(selectedVoice)u.voice=selectedVoice;u.onerror=e=>{if(!['canceled','interrupted'].includes(e.error))$('voiceInfo').textContent='Audio error: '+e.error};speechSynthesis.speak(u)}
+function speechState(s){$('recognitionStatus').textContent=s}
+function showHint(){if(!hint){$('hintBox').classList.add('hidden');$('hintBox').textContent='';return}$('hintBox').classList.remove('hidden');$('hintBox').textContent='💡 Hint '+hint+': '+tasks[index].hints[hint-1]}
+function controls(){const busy=processing||transcribing;
+$('speakBtn').disabled=!CAN_RECORD||listening||busy||achieved||index>=tasks.length;
+$('stopBtn').disabled=!listening;
+$('againBtn').disabled=!CAN_RECORD||listening||busy||achieved||index>=tasks.length;
+$('confirmBtn').disabled=!ready||listening||busy||achieved;
+$('nextBtn').classList.toggle('hidden',!achieved||index>=tasks.length-1);
+$('nextBtn').disabled=busy||listening;
+$('resetBtn').disabled=busy||listening;
+}
+function drawSteps(){$('steps').innerHTML='';tasks.forEach((t,i)=>{const s=document.createElement('span');s.className='step'+(i<index?' done':i===index?' active':'');s.textContent=(i<index?'✓ ':'')+(i+1);$('steps').append(s)})}
+function renderLog(){const entries=[];for(const r of results){entries.push('TASK '+r.number+' — '+r.task);entries.push('AI: '+r.ai);entries.push('YOU: '+r.transcript);entries.push('PASS · Hint level '+r.hint);entries.push('')}if(!results.length)$('log').textContent='The conversation will appear here.';else $('log').textContent=entries.join('\n')}
+function render(){const t=tasks[index];$('progressText').textContent='Task '+(index+1)+' of '+tasks.length;$('aiText').textContent=t.ai;$('taskText').textContent=t.instruction;$('completed').textContent=results.length+' / '+tasks.length;$('hintLevel').textContent=String(hint);$('achieved').textContent=String(achieved);showHint();drawSteps();controls();renderLog()}
+function clearAttempt(){clearAudio();$('transcript').textContent='Your speech will appear here.';$('micInfo').textContent='Microphone is not active.';$('recordingTime').textContent='Recording time: 0 seconds';$('confidence').textContent='—';$('httpStatus').textContent='—';$('reason').textContent='';spoken='';ready=false;speechState('READY')}
+function chooseMime(){for(const mime of ['audio/webm;codecs=opus','audio/webm','audio/mp4']){if(MediaRecorder.isTypeSupported(mime))return mime}return ''}
+async function begin(){if(!CAN_RECORD||listening||processing||transcribing||achieved)return;
+stopAudio();const token=++recordToken;ready=false;spoken='';clearAudio();$('transcript').textContent='Recording...';$('confidence').textContent='—';$('httpStatus').textContent='—';$('reason').textContent='';$('micInfo').textContent='Requesting microphone permission...';speechState('PREPARING');controls();
+try{
+ const acquired=await navigator.mediaDevices.getUserMedia({audio:true});
+ if(token!==recordToken||achieved){acquired.getTracks().forEach(t=>t.stop());return}
+ stream=acquired;chunks=[];
+ const mime=chooseMime();recorder=mime?new MediaRecorder(stream,{mimeType:mime}):new MediaRecorder(stream);
+ recorder.ondataavailable=e=>{if(e.data&&e.data.size)chunks.push(e.data)};
+ recorder.onerror=()=>{if(token!==recordToken)return;stopClock();listening=false;releaseMic();speechState('ERROR');status('Recording failed. Please try again.','error');controls()};
+ recorder.onstop=async()=>{stopClock();releaseMic();if(token!==recordToken)return;listening=false;
+ const type=(recorder.mimeType||mime||'audio/webm').split(';')[0];audioBlob=new Blob(chunks,{type});chunks=[];
+ if(!audioBlob.size){speechState('ERROR');status('No audio captured. Please record again.','error');controls();return}
+ audioUrl=URL.createObjectURL(audioBlob);$('playback').src=audioUrl;$('playback').classList.remove('hidden');
+ $('micInfo').textContent='Recording stopped. You can listen to the audio.';controls();await transcribe(token);
+ };
+ recorder.start(250);recordStarted=Date.now();listening=true;speechState('RECORDING');$('micInfo').textContent='🎤 Recording. Speak slowly and press STOP when finished.';status('Recording... You can pause between phrases.');
+ const tick=()=>{$('recordingTime').textContent='Recording time: '+Math.floor((Date.now()-recordStarted)/1000)+' seconds';if(Date.now()-recordStarted>=MAX_RECORD_MS)stopRecording()};tick();recordTimer=setInterval(tick,500);controls();
+}catch(e){releaseMic();listening=false;speechState('ERROR');status('Microphone error: '+(e.message||String(e)),'error');controls()}}
+function stopRecording(){if(!listening||!recorder||recorder.state!=='recording')return;$('stopBtn').disabled=true;$('micInfo').textContent='Finishing recording...';recorder.stop()}
+async function transcribe(token){if(!audioBlob||token!==recordToken)return;transcribing=true;ready=false;speechState('TRANSCRIBING');$('transcript').textContent='Recognizing your speech...';status('Sending the recording to Gemini. Please wait...');controls();
+try{
+ const controller=new AbortController();const timeout=setTimeout(()=>controller.abort(),60000);let response;
+ try{response=await fetch(TRANSCRIBE_URL,{method:'POST',headers:{'Content-Type':audioBlob.type||'audio/webm'},body:audioBlob,signal:controller.signal})}finally{clearTimeout(timeout)}
+ if(token!==recordToken)return;
+ $('httpStatus').textContent=String(response.status);
+ const raw=await response.text();let data;try{data=JSON.parse(raw)}catch{throw Error('Transcription service did not return JSON.')}
+ if(!response.ok||data.ok!==true)throw Error(data.error||data.message||'Transcription failed (HTTP '+response.status+').');
+ // The existing Worker returns transcript; support common nested response shapes too.
+ const transcript=[data.transcript,data.text,data.transcription, data.result?.transcript, data.result?.text].find(x=>typeof x==='string'&&x.trim());
+ if(!transcript)throw Error('No transcript returned. Check the technical response format.');
+ spoken=transcript.trim();ready=true;$('transcript').textContent=spoken;speechState('TRANSCRIPT_READY');status('Transcript ready. Listen to the recording and confirm only if it matches your words.','pass');
+}catch(e){if(token!==recordToken)return;spoken='';ready=false;$('transcript').textContent='No transcript available.';speechState('ERROR');status(e.name==='AbortError'?'Transcription timed out. Choose RECORD AGAIN.':'Transcription error: '+e.message,'error')}
+finally{if(token===recordToken){transcribing=false;controls()}}
+}
+async function validate(){if(!ready||processing||listening||achieved)return;const transcript=spoken.trim();if(!transcript)return;const t=tasks[index];processing=true;const token=++requestToken;controls();speechState('VALIDATING');status('Gemini is checking the communication task...');const payload={currentTask:t.id,expectedFunction:t.fn,expectedIntent:t.intent,expectedInformation:t.info,learnerTranscript:transcript};try{const controller=new AbortController();const timeout=setTimeout(()=>controller.abort(),30000);let response;try{response=await fetch(API_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload),signal:controller.signal})}finally{clearTimeout(timeout)}const raw=await response.text();if(token!==requestToken)return;let data;try{data=JSON.parse(raw)}catch{throw Error('API did not return valid JSON.')} $('httpStatus').textContent=String(response.status);if(!response.ok||data.ok!==true)throw Error(data.error||data.message||'API error HTTP '+response.status);const c=data.classification;if(!c||typeof c!=='object'||typeof c.function!=='string'||typeof c.intent!=='string'||typeof c.information!=='string'||typeof c.semanticMatch!=='boolean'||!['HIGH','MEDIUM','LOW'].includes(norm(c.confidence)))throw Error('Invalid AI classification.');$('confidence').textContent=c.confidence;$('reason').textContent=c.reason||'';const match=norm(c.function)===t.fn&&norm(c.intent)===t.intent&&norm(c.information)===t.info&&c.semanticMatch===true;if(match&&norm(c.confidence)==='HIGH'){achieved=true;results.push({number:index+1,task:t.id,ai:t.ai,transcript,hint});speechState('PASS');status('PASS — Communication task achieved!','pass');if(index===tasks.length-1)finish()}else if(norm(c.confidence)==='LOW'||(match&&norm(c.confidence)==='MEDIUM')){speechState('UNCERTAIN');status('UNCERTAIN — Please say it again. No hint penalty.','fail')}else{hint=Math.min(3,hint+1);speechState('NEEDS_SUPPORT');status('NEEDS SUPPORT — Try again using the hint.','fail')}ready=false;render()}catch(e){if(token!==requestToken)return;speechState('ERROR');status(e.name==='AbortError'?'The API timed out. Please try confirming again.':'Validation error: '+e.message,'error')}finally{if(token===requestToken){processing=false;controls()}}}
+function next(){if(!achieved||index>=tasks.length-1||processing||listening||transcribing)return;stopAudio();index++;hint=0;achieved=false;clearAttempt();status('New task. Listen to the AI, then speak.');render();/* Playback is user-triggered through LISTEN AGAIN for reliable browser behavior. */}
+function finish(){const total=results.length;const noHint=results.filter(x=>x.hint===0).length;const assisted=total-noHint;const maxHint=Math.max(0,...results.map(x=>x.hint));$('summaryPanel').classList.remove('hidden');$('summary').textContent='';const lines=[['Result',total+' / '+tasks.length+' communication tasks completed'],['Without hints',String(noHint)],['With hints',String(assisted)],['Highest hint level',String(maxHint)],['Pronunciation','Not assessed in this mode']];for(const [name,value] of lines){const p=document.createElement('p');const b=document.createElement('b');b.textContent=name+': ';p.append(b,document.createTextNode(value));$('summary').append(p)}status('ALL 6 TASKS COMPLETED — Session finished!','pass')}
+function reset(){if(processing||listening||transcribing)return;requestToken++;recordToken++;releaseMic();stopClock();stopAudio();index=0;results=[];hint=0;achieved=false;listening=false;processing=false;clearAttempt();$('summaryPanel').classList.add('hidden');status('Ready. Listen to the AI, then speak.');render()}
+$('listenBtn').addEventListener('click',say);
+$('speakBtn').addEventListener('click',begin);
+$('stopBtn').addEventListener('click',stopRecording);
+$('againBtn').addEventListener('click',begin);
+$('confirmBtn').addEventListener('click',validate);
+$('nextBtn').addEventListener('click',next);
+$('resetBtn').addEventListener('click',reset);
+if('speechSynthesis'in window){voiceLoad();speechSynthesis.addEventListener('voiceschanged',voiceLoad);setTimeout(voiceLoad,400);setTimeout(voiceLoad,1200)}
+if(!CAN_RECORD){speechState('UNSUPPORTED');status('Audio recording is not supported in this browser. Try Chrome with microphone access.','error')}
+window.addEventListener('pagehide',()=>{releaseMic();stopClock();if(audioUrl)URL.revokeObjectURL(audioUrl)});
+render();
+</script>
+</body>
+</html>
